@@ -16,6 +16,11 @@ typedef int bool;
 #define false 0
 
 #define BUF_SIZE 1024
+#define MAX_WORDS 50
+
+typedef struct {	// struct que armazena as palavras bloqueadas pelo administrador
+	char word[20];
+} Word;
 
 typedef struct {
     char username[20];
@@ -28,6 +33,8 @@ void connectingToClientServer(const User user, const User conversa); // conecta-
 void createNewServer(const User user); // torna o cliente num server
 void sendString(int fd, char *msg);
 char *receiveString(int fd);
+int compareWords(const char *word1, const char *word2);
+char * filteredString (char * msgToSend);
 
 int main(int argc, char *argv[]) {
 	printf("\e[1;1H\e[2J"); 
@@ -159,6 +166,10 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 		while(1) { // envia e recebe mensagens até alguém pressionar ENTER
 			printf("%s: ", user.username);
 			fgets(msgToSend, sizeof(msgToSend), stdin);
+
+
+			char *filteredMessage = filteredString(msgToSend);
+			strcpy(msgToSend, filteredMessage);
 			
 			if(strcmp(msgToSend, "\n") == 0) {
 				sendString(fd, "Disconnected\n");
@@ -256,7 +267,12 @@ void createNewServer(const User user) { // torna o client num server à espera d
 			}
 
 			printf("%s: ", user.username);
+			
+
 			fgets(msgToSend, sizeof(msgToSend), stdin);
+			char *filteredMessage = filteredString(msgToSend);
+			strcpy(msgToSend, filteredMessage);
+
 
 			if(strcmp(msgToSend, "\n") == 0) { // sai do programa mas garante que o user que se conectou saiu primeiro por causa de erros na função bind
 				sendString(client, "Disconnected\n");
@@ -277,6 +293,80 @@ void createNewServer(const User user) { // torna o client num server à espera d
     close(client);
 	}
 	return;
+}
+
+int compareWords(const char *palavra1, const char *palavra2) {
+    int i = 0;
+    while (palavra1[i] != '\0' && palavra2[i] != '\0') {
+        // Converte para minúsculo antes da comparação
+        char char1 = tolower(palavra1[i]);
+        char char2 = tolower(palavra2[i]);
+
+        if (char1 != char2) {
+            return 1;
+        }
+        i++;
+    }
+
+  // Verifica se ambas as strings terminaram
+    return 0;
+}
+
+char *filteredString(char *msgToSend) {
+    FILE *file = fopen("words.bin", "rb");
+    if (file == NULL) {
+        return NULL;
+    }
+
+    Word words[MAX_WORDS];
+    size_t num_words = fread(words, sizeof(Word), MAX_WORDS, file);
+    fclose(file);
+
+    if (num_words == 0) {
+        return msgToSend; // Se não há palavras para filtrar, retornamos a mensagem original.
+    }
+
+    char frase_filtrada[BUF_SIZE] = ""; // Inicializa o buffer para a frase filtrada
+
+    char *frase_dividida = strtok(msgToSend, " ");
+    char *palavras[MAX_WORDS]; // Array para armazenar as palavras
+    int num_palavras = 0;
+
+    while (frase_dividida != NULL && num_palavras < MAX_WORDS) {
+        palavras[num_palavras] = frase_dividida;
+        num_palavras++;
+        frase_dividida = strtok(NULL, " ");
+    }
+
+    for (int j = 0; j < num_palavras; j++) {
+        bool existe = false;
+        for (int i = 0; i < num_words; i++) {
+            if (compareWords(words[i].word, palavras[j]) == 0) {
+                existe = true;
+                break;
+            }
+        }
+
+        if (!existe) {
+            strcat(frase_filtrada, palavras[j]);
+            strcat(frase_filtrada, " ");
+
+            // Verifica se o tamanho da frase filtrada excede o buffer máximo
+            if (strlen(frase_filtrada) >= BUF_SIZE) {
+                return NULL; // Se exceder, retornamos NULL indicando erro
+            }
+        }
+    }
+
+    // Remova o espaço extra no final, se houver
+    /*size_t len = strlen(frase_filtrada);
+    if (len > 0 && frase_filtrada[len - 1] == ' ') {
+        frase_filtrada[len - 1] = '\0';
+    }*/
+
+	strcat(frase_filtrada, "\n");
+
+    return strdup(frase_filtrada); // Retorna uma cópia alocada dinamicamente da frase filtrada
 }
 
 void sendString(int fd, char *msg) {
