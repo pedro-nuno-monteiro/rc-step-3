@@ -8,7 +8,6 @@
 #include <netdb.h>
 #include <sys/wait.h>
 #include <ctype.h>
-#include <pthread.h>
 
 #include <netinet/tcp.h> // Para não dar problemas na função bind
 
@@ -131,6 +130,7 @@ int serverConnection(int argc, char *argv[]) {
 	return fd;
 }
 
+
 void connectingToClientServer(const User user, const User conversa) { // conecta-se ao outro cliente para conversas
 
 	int fd;
@@ -150,7 +150,8 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 		connection_success = false;
 	}
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		erro("Connect");
+		//erro("Connect");
+		printf("connect");
 		connection_success = false;
 	}
 
@@ -165,30 +166,49 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 		char *msgReceived = NULL;
 		char msgToSend[BUF_SIZE-22];
 		while(1) { // envia e recebe mensagens até alguém pressionar ENTER
-			printf("%s: ", user.username);
-			fgets(msgToSend, sizeof(msgToSend), stdin);
 
-			if(strcmp(msgToSend, "\n") == 0) {
-				sendString(fd, "Disconnected\n");
-				break;
+			if(fork()==0){ //
+				while(1){
+					//printf("%s: ", user.username);
+					fgets(msgToSend, sizeof(msgToSend), stdin);
+
+					
+					if(strcmp(msgToSend, "\n") == 0) {
+						sendString(fd, "Disconnected\n");
+						break;
+					}
+
+					char *filteredMessage = filteredString(msgToSend);
+					strcpy(msgToSend, filteredMessage);
+
+					char formattedMsg[BUF_SIZE];
+					sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
+					sendString(fd, formattedMsg); 
+					fflush(stdout);
+				}
+
+				exit(0);
+				
 			}
 
-			char *filteredMessage = filteredString(msgToSend);
-			strcpy(msgToSend, filteredMessage);
+			else{
+				while(1){
+					free(msgReceived);
+					msgReceived = receiveString(fd);
 
-			char formattedMsg[BUF_SIZE];
-			sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
-			sendString(fd, formattedMsg); 
-			fflush(stdout);
+					if(strcmp(msgReceived, "Disconnected\n") == 0) { 
+						sendString(fd, "Disconnected\n");
+						break;
+					}
+
+				}
+				
+			}
+
 			
-			free(msgReceived);
-			msgReceived = receiveString(fd);
-
-			if(strcmp(msgReceived, "Disconnected\n") == 0) { 
-				sendString(fd, "Disconnected\n");
-				break;
-			}
+			
 		}
+
     fflush(stdout);
 	}
 }
@@ -233,6 +253,7 @@ void createNewServer(const User user) { // torna o client num server à espera d
 	while (waitpid(-1, NULL, WNOHANG) > 0);
 
 	client = accept(fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_size); // fica à espera da conexão do cliente
+
 	if (client > 0) {
 		close(fd);
 		printf("Connected with another user\n");
@@ -241,7 +262,6 @@ void createNewServer(const User user) { // torna o client num server à espera d
 		User conversa;
 		
 		char aux_string[BUF_SIZE];
-		
 		strcpy(aux_string, receiveString(client));
 		const char* compareString = "Chatting with";
 		size_t compareLength = strlen(compareString);
@@ -258,43 +278,82 @@ void createNewServer(const User user) { // torna o client num server à espera d
 
 		// Começa a conversa
 		while(1) { // envia e recebe mensagens até alguém pressionar ENTER
-			free(msgReceived);
-			msgReceived = receiveString(client);
 
-			if(strcmp(msgReceived, "Disconnected\n")==0) { // o user desconectou-se então termina a conversa
-				sleep(1); 
-				close(client);
-				return;
-			}
+			if(fork()==0){
 
-			printf("%s: ", user.username);
-			
+				while(1){ // ler 
+					free(msgReceived);
+					msgReceived = receiveString(client);
 
-			fgets(msgToSend, sizeof(msgToSend), stdin);
-
-
-			if(strcmp(msgToSend, "\n") == 0) { // sai do programa mas garante que o user que se conectou saiu primeiro por causa de erros na função bind
-				sendString(client, "Disconnected\n");
-				free(msgReceived);
-				msgReceived = receiveString(client);
-				if(strcmp(msgReceived, "Disconnected\n") == 0) { 
-					sleep(1);
-					close(client);
-					return;
+					if(strcmp(msgReceived, "Disconnected\n")==0) { // o user desconectou-se então termina a conversa
+						sleep(1); 
+						close(client);
+						return;
+					}
 				}
+
+				exit(0);	
+
 			}
+			else{
+				while(1){
+					//printf("%s: ", user.username);
+					fgets(msgToSend, sizeof(msgToSend), stdin);
 
-			char *filteredMessage = filteredString(msgToSend);
-			strcpy(msgToSend, filteredMessage);
 
-			char formattedMsg[BUF_SIZE];
-			sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
-			sendString(client, formattedMsg); 
-			fflush(stdout);
+					if(strcmp(msgToSend, "\n") == 0) { // sai do programa mas garante que o user que se conectou saiu primeiro por causa de erros na função bind
+
+						sendString(client, "Disconnected\n");
+						free(msgReceived);
+						msgReceived = receiveString(client);
+
+						if(strcmp(msgReceived, "Disconnected\n") == 0) { 
+							sleep(1);
+							close(client);
+							return;
+						}
+					}
+
+					char *filteredMessage = filteredString(msgToSend);
+					strcpy(msgToSend, filteredMessage);
+
+					char formattedMsg[BUF_SIZE];
+					sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
+					sendString(client, formattedMsg); 
+					fflush(stdout);
+				}		
+			}
 		}
+
     close(client);
+
 	}
 	return;
+}
+
+void sendString(int fd, char *msg) {
+	write(fd, msg, 1 + strlen(msg));
+}
+
+char *receiveString(int fd) {
+	int nread = 0;
+	char buffer[BUF_SIZE];
+	char *string;
+
+	nread = read(fd, buffer, BUF_SIZE - 1);
+	buffer[nread] = '\0';
+	string = (char *)malloc(strlen(buffer) + 1);
+	strcpy(string, buffer);
+	if(string[0]=='\n')printf("\e[1;1H\e[2J");
+	printf("%s", string);
+	fflush(stdout);
+	return string;
+}
+
+void erro(char *msg) {
+	printf("Erro: %s\n", msg);
+	fflush(stdout);
+	exit(-1);
 }
 
 int compareWords(const char *palavra1, const char *palavra2) {
@@ -363,29 +422,4 @@ char *filteredString(char *msgToSend) {
 	strcat(frase_filtrada, "\n");
 
     return strdup(frase_filtrada); // Retorna uma cópia alocada dinamicamente da frase filtrada
-}
-
-void sendString(int fd, char *msg) {
-	write(fd, msg, 1 + strlen(msg));
-}
-
-char *receiveString(int fd) {
-	int nread = 0;
-	char buffer[BUF_SIZE];
-	char *string;
-
-	nread = read(fd, buffer, BUF_SIZE - 1);
-	buffer[nread] = '\0';
-	string = (char *)malloc(strlen(buffer) + 1);
-	strcpy(string, buffer);
-	if(string[0]=='\n')printf("\e[1;1H\e[2J");
-	printf("%s", string);
-	fflush(stdout);
-	return string;
-}
-
-void erro(char *msg) {
-	printf("Erro: %s\n", msg);
-	fflush(stdout);
-	exit(-1);
 }
