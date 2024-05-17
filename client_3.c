@@ -217,7 +217,7 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 			
 			
 		}
-
+	close(fd);
     fflush(stdout);
 	}
 }

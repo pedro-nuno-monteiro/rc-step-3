@@ -9,8 +9,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <sys/select.h>
 
-#define SERVER_PORT 9001
+#define SERVER_PORT 9000
 #define BUF_SIZE 1024
 #define MAX_USERS 50
 #define MAX_WORDS 50
