@@ -181,7 +181,7 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
             exit(EXIT_FAILURE);
         }
 
-        if (FD_ISSET(STDIN_FILENO, &read_fds)) {
+        if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
             // Handle user input
             if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
                 if (strcmp(msgToSend, "\n") == 0) {
@@ -200,7 +200,7 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
             }
         }
 
-        if (FD_ISSET(fd, &read_fds)) {
+        if (FD_ISSET(fd, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
             // Handle message from client
             if (msgReceived != NULL) {
                 free(msgReceived);
@@ -304,66 +304,66 @@ void createNewServer(const User user) { // torna o client num server à espera d
 
 		// Começa a conversa
 		while (!disconnectRequested) {
-        FD_ZERO(&read_fds);
-        FD_SET(STDIN_FILENO, &read_fds);
-        FD_SET(client, &read_fds);
-        max_fd = client > STDIN_FILENO ? client : STDIN_FILENO;
+            FD_ZERO(&read_fds);
+            FD_SET(STDIN_FILENO, &read_fds);
+            FD_SET(client, &read_fds);
+            max_fd = client > STDIN_FILENO ? client : STDIN_FILENO;
 
-        if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
-            perror("select");
-            exit(EXIT_FAILURE);
-        }
+            if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
+                perror("select");
+                exit(EXIT_FAILURE);
+            }
 
-        if (FD_ISSET(STDIN_FILENO, &read_fds)) {
-            // Handle user input
-            if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
-                if (strcmp(msgToSend, "\n") == 0) {
-                    sendString(client, "Disconnected\n");
-                    free(msgReceived);
-                    msgReceived = NULL;
-                    msgReceived = receiveString(client);
-
-                    if (msgReceived && strcmp(msgReceived, "Disconnected\n") == 0) {
-                        disconnectRequested = true;
+            if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
+                // Handle user input
+                if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
+                    if (strcmp(msgToSend, "\n") == 0) {
+                        sendString(client, "Disconnected\n");
                         free(msgReceived);
                         msgReceived = NULL;
-                        close(client);
-                        break;
-                    }
-                    free(msgReceived);
-                    msgReceived = NULL;
-                } else {
-                    char *filteredMessage = filteredString(msgToSend);
-                    strcpy(msgToSend, filteredMessage);
+                        msgReceived = receiveString(client);
 
-                    char formattedMsg[BUF_SIZE];
-                    sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
-                    sendString(client, formattedMsg);
-                    fflush(stdout);
+                        if (msgReceived && strcmp(msgReceived, "Disconnected\n") == 0) {
+                            disconnectRequested = true;
+                            free(msgReceived);
+                            msgReceived = NULL;
+                            close(client);
+                            break;
+                        }
+                        free(msgReceived);
+                        msgReceived = NULL;
+                    } else {
+                        char *filteredMessage = filteredString(msgToSend);
+                        strcpy(msgToSend, filteredMessage);
+
+                        char formattedMsg[BUF_SIZE];
+                        sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
+                        sendString(client, formattedMsg);
+                        fflush(stdout);
+                    }
+                }
+            }
+
+            if (FD_ISSET(client, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
+                // Handle message from client
+                char *newMsgReceived = receiveString(client);
+
+                if (newMsgReceived && strcmp(newMsgReceived, "Disconnected\n") == 0) {
+                    sendString(client, "Disconnected\n");
+                    disconnectRequested = true;
+                    free(newMsgReceived);
+                    close(client);
+                    break;
+                } else if (newMsgReceived) {
+                    printf("%s\n", newMsgReceived);
+                    free(newMsgReceived);
                 }
             }
         }
 
-        if (FD_ISSET(client, &read_fds)) {
-            // Handle message from client
-            char *newMsgReceived = receiveString(client);
-
-            if (newMsgReceived && strcmp(newMsgReceived, "Disconnected\n") == 0) {
-                sendString(client, "Disconnected\n");
-                disconnectRequested = true;
-                free(newMsgReceived);
-                close(client);
-                break;
-            } else if (newMsgReceived) {
-                printf("%s\n", newMsgReceived);
-                free(newMsgReceived);
-            }
+        if (msgReceived != NULL) {
+            free(msgReceived);
         }
-    }
-
-    if (msgReceived != NULL) {
-        free(msgReceived);
-    }
 
     close(client);
 
