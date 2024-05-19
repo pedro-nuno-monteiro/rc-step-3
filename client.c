@@ -43,53 +43,59 @@ int main(int argc, char *argv[]) {
 	char *msgReceived = NULL;
 	char msgToSend[BUF_SIZE];
 
-	sleep(3);
+	sleep(2);
 	printf("\e[1;1H\e[2J"); 
 
-	while(msgReceived == NULL || strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") != 0){
-    free(msgReceived);
-    msgReceived = receiveString(fd);
-    
-    User user;
-    const char* compareString = "Creating a new server:";
-    size_t compareLength = strlen(compareString);
-    if(strncmp(msgReceived, compareString, compareLength) == 0) {
-		sleep(2);	
-		printf("\e[1;1H\e[2J"); 
-		if (sscanf(msgReceived, "Creating a new server: %s %d", user.username, &user.port) == 2){ // recebe a string do server que diz para se tornar num server e ficar à espera de uma cliente
-			printf("username: %s\n", user.username);
-			createNewServer(user);
+	while(msgReceived == NULL || strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") != 0) {
+        
+        free(msgReceived);
+        msgReceived = receiveString(fd);
+        
+        User user;
+        const char* compareString = "Creating a new server:";
+        size_t compareLength = strlen(compareString);
+        if(strncmp(msgReceived, compareString, compareLength) == 0) {
+            
+            sleep(2);	
+            printf("\e[1;1H\e[2J"); 
 
-			sendString(fd, "Created server successfully\n");
-			continue;
-		}	
-    }
+            if (sscanf(msgReceived, "Creating a new server: %s %d", user.username, &user.port) == 2) { // recebe a string do server que diz para se tornar num server e ficar à espera de uma cliente
+                printf("username: %s\n", user.username);
+                createNewServer(user);
 
-    const char* compareString2 = "Start a conversation:";
-    size_t compareLength2 = strlen(compareString2);
+                sendString(fd, "Created server successfully\n");
+                continue;
+            }
+        }
 
-    if(strncmp(msgReceived, compareString2, compareLength2) == 0) { // recebe a string do server que diz para se conectar a um outro cliente
-		printf("\n\nConnecting with another user\n");
-		sleep(2);
-		printf("\e[1;1H\e[2J");
-		User conversa;
-		if (sscanf(msgReceived, "Start a conversation: %s -> %s %d", user.username, conversa.username, &conversa.port) == 3) {
-			printf("username: %s\n", user.username);
-			// Connect to server
-			connectingToClientServer(user, conversa);
-			sendString(fd, "Connected successfully\n");
-			continue;
-		}
-    }
-    
-    if(strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") == 0) // sai do programa
-		break;
-    
-    fgets(msgToSend, sizeof(msgToSend), stdin);
-    sendString(fd, msgToSend); 
-    fflush(stdout);
+        const char* compareString2 = "Start a conversation:";
+        size_t compareLength2 = strlen(compareString2);
+
+        if(strncmp(msgReceived, compareString2, compareLength2) == 0) { // recebe a string do server que diz para se conectar a um outro cliente
+            
+            printf("\n\nConnecting with another user\n");
+            sleep(2);
+            printf("\e[1;1H\e[2J");
+            User conversa;
+            
+            if (sscanf(msgReceived, "Start a conversation: %s -> %s %d", user.username, conversa.username, &conversa.port) == 3) {
+                printf("username: %s\n", user.username);
+                // Connect to server
+                connectingToClientServer(user, conversa);
+                sendString(fd, "Connected successfully\n");
+                continue;
+            }
+        }
+        
+        if(strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") == 0) // sai do programa
+            break;
+        
+        fgets(msgToSend, sizeof(msgToSend), stdin);
+        sendString(fd, msgToSend); 
+        fflush(stdout);
 	}
-	sleep(3);
+
+	sleep(2);
 	printf("\e[1;1H\e[2J"); 
 	close(fd);
 	exit(0);
@@ -167,7 +173,7 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 		char msgToSend[BUF_SIZE-22];
 		bool disconnectRequested = false; 
 		fd_set read_fds;
-    	int max_fd;
+        int max_fd;
 
 
 		while (!disconnectRequested) {
@@ -260,7 +266,9 @@ void createNewServer(const User user) { // torna o client num server à espera d
 			perror("setsockopt");
 			close(fd);
 			sleep(2);
-		} else {
+		} 
+        
+        else {
 			break;
 		}
 
@@ -300,7 +308,7 @@ void createNewServer(const User user) { // torna o client num server à espera d
 		char msgToSend[BUF_SIZE-22];
 		bool disconnectRequested = false;
 		fd_set read_fds;
-    	int max_fd;
+        int max_fd;
 
 		// Começa a conversa
 		while (!disconnectRequested) {
@@ -315,8 +323,11 @@ void createNewServer(const User user) { // torna o client num server à espera d
             }
 
             if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
+                
                 // Handle user input
                 if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
+
+                    // Verifica se o utilizador quer sair
                     if (strcmp(msgToSend, "\n") == 0) {
                         sendString(client, "Disconnected\n");
                         free(msgReceived);
@@ -332,7 +343,13 @@ void createNewServer(const User user) { // torna o client num server à espera d
                         }
                         free(msgReceived);
                         msgReceived = NULL;
-                    } else {
+
+                    } 
+
+                    // Se não for para sair, envia a mensagem
+                    else {
+
+                        // Filtra a mensagem antes de enviar
                         char *filteredMessage = filteredString(msgToSend);
                         strcpy(msgToSend, filteredMessage);
 
@@ -344,7 +361,9 @@ void createNewServer(const User user) { // torna o client num server à espera d
                 }
             }
 
-            if (FD_ISSET(client, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
+            // verifica se há dados disponíveis no socket do cliente
+            if (FD_ISSET(client, &read_fds)) {
+                
                 // Handle message from client
                 char *newMsgReceived = receiveString(client);
 
@@ -354,6 +373,7 @@ void createNewServer(const User user) { // torna o client num server à espera d
                     free(newMsgReceived);
                     close(client);
                     break;
+
                 } else if (newMsgReceived) {
                     printf("%s\n", newMsgReceived);
                     free(newMsgReceived);
@@ -365,9 +385,9 @@ void createNewServer(const User user) { // torna o client num server à espera d
             free(msgReceived);
         }
 
-    close(client);
-
+        close(client);
 	}
+    
 	return;
 }
 
@@ -384,8 +404,10 @@ char *receiveString(int fd) {
 	buffer[nread] = '\0';
 	string = (char *)malloc(strlen(buffer) + 1);
 	strcpy(string, buffer);
-	if(string[0]=='\n')printf("\e[1;1H\e[2J");
-	printf("%s", string);
+	
+    if(string[0]=='\n') printf("\e[1;1H\e[2J");
+	
+    printf("%s", string);
 	fflush(stdout);
 	return string;
 }
@@ -396,7 +418,7 @@ void erro(char *msg) {
 	exit(-1);
 }
 
-int compareWords(const char *palavra1, const char *palavra2) {
+int compareWords(const char *palavra1, const char *palavra2) { //função que devolve 0 se as palavras forem iguais e 1 se forem diferentes
     int i = 0;
     while (palavra1[i] != '\0' && palavra2[i] != '\0') {
         // Converte para minúsculo antes da comparação
@@ -409,7 +431,7 @@ int compareWords(const char *palavra1, const char *palavra2) {
         i++;
     }
 
-  // Verifica se ambas as strings terminaram
+    // Verifica se ambas as strings terminaram
     return 0;
 }
 
@@ -442,13 +464,13 @@ char *filteredString(char *msgToSend) {
     for (int j = 0; j < num_palavras; j++) {
         bool existe = false;
         for (int i = 0; i < num_words; i++) {
-            if (compareWords(words[i].word, palavras[j]) == 0) {
+            if (compareWords(words[i].word, palavras[j]) == 0) { //função retorna 0 quando 2 palavras são iguais
                 existe = true;
                 break;
             }
         }
 
-        if (!existe) {
+        if (!existe) { // se a palavra for uma palavra bloqueada, simplesmente não a adicionamos à frase filtrada
             strcat(frase_filtrada, palavras[j]);
             strcat(frase_filtrada, " ");
 

@@ -321,10 +321,10 @@ void conversationsMenu(int client_fd, const User user, bool admin) {
 	while(selection != 4) {
 		char string[200]; 
 		if (admin == false) {
-			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n1. Private\n2. Group\n3. Block users\n4. Log out\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
+			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n\n1. Private\n2. Group\n3. Block users\n4. Log out\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
 		}
 		else {
-			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n1. Private\n2. Group\n3. Block users\n4. Log out\n5. Filter Words\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
+			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n\n1. Private\n2. Group\n3. Block users\n4. Log out\n5. Filter Words\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
 		}
 		
 		sendString(client_fd, string);
@@ -446,7 +446,7 @@ void blockUsers(int client_fd, User user) { //func para bloquear users
 	FILE *file = fopen("users.bin", "rb");
     if (file == NULL) {
         return;
-    }
+    }x\
 
     User users[MAX_USERS];
     User available_users[MAX_USERS];
