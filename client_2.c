@@ -8,7 +8,8 @@
 #include <netdb.h>
 #include <sys/wait.h>
 #include <ctype.h>
-
+#include <sys/select.h>
+#include <arpa/inet.h>
 #include <netinet/tcp.h> // Para não dar problemas na função bind
 
 typedef int bool;
@@ -17,6 +18,7 @@ typedef int bool;
 
 #define BUF_SIZE 1024
 #define MAX_WORDS 50
+#define MAX_CLIENTS 10
 
 typedef struct {	// struct que armazena as palavras bloqueadas pelo administrador
 	char word[20];
@@ -35,6 +37,10 @@ void sendString(int fd, char *msg);
 char *receiveString(int fd);
 int compareWords(const char *word1, const char *word2);
 char * filteredString (char * msgToSend);
+
+void createGroupChatServer(const User user);
+void connectToGroupChatServer(const User user, int port);
+void handle_client_message(int client_fd, fd_set *master_set, int fd_max, int server_fd, const User user);
 
 int main(int argc, char *argv[]) {
 	printf("\e[1;1H\e[2J"); 
@@ -80,7 +86,36 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
     }
-    
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	const char* groupChatString = "New group conversation created by";
+        size_t groupChatLength = strlen(groupChatString);
+        if (strncmp(msgReceived, groupChatString, groupChatLength) == 0) {
+            sleep(2);
+            printf("\e[1;1H\e[2J");
+            if (sscanf(msgReceived, "New group conversation created by %s in port %d", user.username, &user.port) == 2) {
+                printf("username: %s\n", user.username);
+                createGroupChatServer(user);
+                
+				sendString(fd, "Created group chat server successfully\n");
+                continue;
+            }
+        }
+
+        const char* connectGroupChatString = "Joining group conversation in port";
+        size_t connectGroupChatLength = strlen(connectGroupChatString);
+        if (strncmp(msgReceived, connectGroupChatString, connectGroupChatLength) == 0) {
+            printf("\n\nConnecting to group chat\n");
+            sleep(2);
+            printf("\e[1;1H\e[2J");
+            User conversa;
+            if (sscanf(msgReceived, "Joining group conversation in port %d: %s", &conversa.port, user.username) == 2) {
+                printf("username: %s\n", user.username);
+                connectToGroupChatServer(user, conversa.port);
+                sendString(fd, "Connected to group chat successfully\n");
+                continue;
+            }
+        }
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////    
     if(strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") == 0) // sai do programa
 		break;
     
@@ -423,3 +458,221 @@ char *filteredString(char *msgToSend) {
 
     return strdup(frase_filtrada); // Retorna uma cópia alocada dinamicamente da frase filtrada
 }
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void createGroupChatServer(const User user) {
+    int server_fd, new_client_fd, fd_max;
+    struct sockaddr_in server_addr, client_addr;
+    socklen_t addrlen;
+    fd_set master_set, read_fds;
+
+    // Create a socket
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("Socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set socket options
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+        perror("Setsockopt failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Bind the socket
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(user.port);
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Bind failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen for incoming connections
+    if (listen(server_fd, MAX_CLIENTS) == -1) {
+        perror("Listen failed");
+        close(server_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize the master and temporary sets
+    FD_ZERO(&master_set);
+    FD_ZERO(&read_fds);
+    FD_SET(server_fd, &master_set);
+    FD_SET(STDIN_FILENO, &master_set); // Add standard input to the master set
+    fd_max = server_fd;
+
+    printf("Server listening on port %d\n", user.port);
+
+    while (1) {
+        read_fds = master_set; // Copy the master set to the temporary set
+
+        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("Select failed");
+            exit(EXIT_FAILURE);
+        }
+
+        // Iterate through the file descriptors
+        for (int i = 0; i <= fd_max; i++) {
+            if (FD_ISSET(i, &read_fds)) {
+                if (i == server_fd) {
+                    // New connection
+                    addrlen = sizeof(client_addr);
+                    new_client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &addrlen);
+                    if (new_client_fd == -1) {
+                        perror("Accept failed");
+                    } else {
+                        FD_SET(new_client_fd, &master_set); // Add the new client to the master set
+                        if (new_client_fd > fd_max) {
+                            fd_max = new_client_fd;
+                        }
+                        printf("New connection from %s on socket %d\n", inet_ntoa(client_addr.sin_addr), new_client_fd);
+                    }
+                } else if (i == STDIN_FILENO) {
+                    // Handle server creator's input
+                    char buffer[BUF_SIZE - 22];
+                    if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+                        if (strcmp(buffer, "\n") == 0) {
+                            // User pressed ENTER without typing anything else
+                            printf("Shutting down server...\n");
+                            for (int j = 0; j <= fd_max; j++) {
+                                if (FD_ISSET(j, &master_set) && j != server_fd && j != STDIN_FILENO) {
+                                    send(j, "Server is shutting down...\n", 27, 0);
+                                    close(j);
+                                    FD_CLR(j, &master_set);
+                                }
+                            }
+                            close(server_fd);
+                            return;
+                        } else {
+                            // Add username to the message
+                            char message[BUF_SIZE];
+                            snprintf(message, sizeof(message), "%s: %s", user.username, buffer);
+                            // Broadcast message to all clients
+                            for (int j = 0; j <= fd_max; j++) {
+                                if (FD_ISSET(j, &master_set)) {
+                                    if (j != server_fd && j != STDIN_FILENO) {
+                                        send(j, message, strlen(message), 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Handle data from a client
+                    char buffer[BUF_SIZE];
+                    int nbytes = recv(i, buffer, sizeof(buffer), 0);
+                    if (nbytes <= 0) {
+                        // Connection closed or error
+                        if (nbytes == 0) {
+                            printf("Socket %d hung up\n", i);
+                        } else {
+                            perror("Recv failed");
+                        }
+                        close(i);
+                        FD_CLR(i, &master_set);
+                    } else {
+                        // Broadcast message to all clients including the server creator
+                        buffer[nbytes] = '\0';
+                        printf("%s", buffer); // Display message on server creator's console
+                        for (int j = 0; j <= fd_max; j++) {
+                            if (FD_ISSET(j, &master_set)) {
+                                if (j != server_fd && j != i) {
+                                    send(j, buffer, nbytes, 0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void connectToGroupChatServer(const User user, int port) {
+    int sock_fd;
+    struct sockaddr_in server_addr;
+    fd_set master_set, read_fds;
+    char buffer[BUF_SIZE - 22];
+
+    // Create a socket
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd == -1) {
+        perror("Socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // Setup server address
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) <= 0) {
+        perror("Invalid address or address not supported");
+        close(sock_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    // Connect to the server
+    if (connect(sock_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Connect failed");
+        close(sock_fd);
+        exit(EXIT_FAILURE);
+    }
+
+    FD_ZERO(&master_set);
+    FD_SET(sock_fd, &master_set);
+    FD_SET(STDIN_FILENO, &master_set);
+    int fd_max = sock_fd;
+
+    printf("Connected to the server. Type messages to send.\n");
+
+    while (1) {
+        read_fds = master_set; // Copy the master set to the temporary set
+
+        if (select(fd_max + 1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("Select failed");
+            exit(EXIT_FAILURE);
+        }
+
+        for (int i = 0; i <= fd_max; i++) {
+            if (FD_ISSET(i, &read_fds)) {
+                if (i == sock_fd) {
+                    // Handle server messages
+                    int nbytes = recv(sock_fd, buffer, sizeof(buffer), 0);
+                    if (nbytes <= 0) {
+                        if (nbytes == 0) {
+                            printf("Server closed the connection\n");
+                        } else {
+                            perror("Recv failed");
+                        }
+                        close(sock_fd);
+                        return;
+                    } else {
+                        buffer[nbytes] = '\0';
+                        printf("%s", buffer);
+                    }
+                } else if (i == STDIN_FILENO) {
+                    char message[BUF_SIZE];
+                    if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
+                        if (strcmp(buffer, "\n") == 0) {
+                            // User pressed ENTER without typing anything else
+                            printf("Disconnecting from server...\n");
+                            close(sock_fd);
+							return;
+                        } else {
+                            snprintf(message, sizeof(message), "%s: %s", user.username, buffer);
+                            send(sock_fd, message, strlen(message), 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    close(sock_fd);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
