@@ -76,6 +76,7 @@ void deleteWord(int client_fd); //func para eliminar uma palavra bloqueada
 bool checkDuplicateUsername(char *username);
 int checkCredentials(char *username, char *password);
 void createBlockUsersFile();
+void createWordsFile();
 // CONVERSATIONS FILE
 void createConversationsFileLog();
 void addConversation(const char *username1, const char *username2, int port);
@@ -116,6 +117,7 @@ int main() {
 		client = accept(fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_size);
 		if (client > 0) {
 			createUsersFile();
+			createWordsFile();
 			createBlockUsersFile();
 			createConversationsFileLog();
 			if (fork() == 0) {
@@ -446,7 +448,7 @@ void blockUsers(int client_fd, User user) { //func para bloquear users
 	FILE *file = fopen("users.bin", "rb");
     if (file == NULL) {
         return;
-    }x\
+    }
 
     User users[MAX_USERS];
     User available_users[MAX_USERS];
@@ -987,6 +989,21 @@ void createConversationsFileLog() { // cria o ficheira das conversas
     } else {
         fclose(file);
     }
+}
+
+void createWordsFile() { // cria o ficheiro das palavras bloqueadas
+	FILE *file = fopen("words.bin", "r");
+	if (file == NULL) {
+		file = fopen("words.bin", "wb");
+		if (file == NULL) {
+			perror("Error creating file");
+			exit(1);
+		}
+
+		fclose(file);
+	} else {
+		fclose(file);
+	}
 }
 
 void addConversation(const char *username1, const char *username2, int port) { // adiciona uma conversa -> dois users e o porto em qual está designada a conversa

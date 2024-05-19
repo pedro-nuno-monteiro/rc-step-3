@@ -33,7 +33,7 @@ int serverConnection(int argc, char *argv[]);
 void connectingToClientServer(const User user, const User conversa); // conecta-se a um server de um cliente
 void createNewServer(const User user); // torna o cliente num server
 void sendString(int fd, char *msg);
-char *receiveString(int fd);
+char *receiveString(int fd, bool mensagens);
 int compareWords(const char *word1, const char *word2);
 char * filteredString (char * msgToSend);
 
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 	while(msgReceived == NULL || strcmp(msgReceived, "\nUntil next time! Thanks for chattingRC with us :)\n") != 0) {
         
         free(msgReceived);
-        msgReceived = receiveString(fd);
+        msgReceived = receiveString(fd, false);
         
         User user;
         const char* compareString = "Creating a new server:";
@@ -168,7 +168,7 @@ void connectingToClientServer(const User user, const User conversa) {
 		sprintf(aux, "Chatting with %s in port %d\n\n", user.username, conversa.port);
 		sendString(fd, aux);
 		
-		receiveString(fd);
+		receiveString(fd, false);
 		
 		char *msgReceived = NULL;
 		char msgToSend[BUF_SIZE-22];
@@ -177,6 +177,7 @@ void connectingToClientServer(const User user, const User conversa) {
         int max_fd;
 
 		while (!disconnectRequested) {
+
             FD_ZERO(&read_fds);
             FD_SET(STDIN_FILENO, &read_fds);
             FD_SET(fd, &read_fds);
@@ -187,11 +188,13 @@ void connectingToClientServer(const User user, const User conversa) {
                 exit(EXIT_FAILURE);
             }
 
-            if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
+            // verifica se há entrada do utilizador disponível no teclado
+            if (FD_ISSET(STDIN_FILENO, &read_fds)) {
                 
-                // Handle user input
+                // guarda mensagem em "msgToSend"
                 if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
 
+                    // Verifica se o utilizador quer sair
                     if (strcmp(msgToSend, "\n") == 0) {
                         sendString(fd, "Disconnected\n");
                         disconnectRequested = true;
@@ -208,7 +211,8 @@ void connectingToClientServer(const User user, const User conversa) {
                 }
             }
 
-            if (FD_ISSET(fd, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
+            // verifica se há dados disponíveis no socket do cliente
+            if (FD_ISSET(fd, &read_fds)) {
                 
                 // Handle message from client
                 if (msgReceived != NULL) {
@@ -216,7 +220,7 @@ void connectingToClientServer(const User user, const User conversa) {
                     msgReceived = NULL;
                 }
 
-                msgReceived = receiveString(fd);
+                msgReceived = receiveString(fd, true);
 
                 if (msgReceived == NULL) {
                     disconnectRequested = true;
@@ -232,7 +236,7 @@ void connectingToClientServer(const User user, const User conversa) {
                 } 
                 
                 else {
-                    printf("%s\n", msgReceived);
+                    printf("%s", msgReceived);
                 }
             }
         }
@@ -298,7 +302,7 @@ void createNewServer(const User user) {
 		User conversa;
 		
 		char aux_string[BUF_SIZE];
-		strcpy(aux_string, receiveString(client));
+		strcpy(aux_string, receiveString(client, false));
 		const char* compareString = "Chatting with";
 		size_t compareLength = strlen(compareString);
 		if(strncmp(aux_string, compareString, compareLength) == 0) {
@@ -317,6 +321,7 @@ void createNewServer(const User user) {
 
 		// Começa a conversa
 		while (!disconnectRequested) {
+            
             FD_ZERO(&read_fds);
             FD_SET(STDIN_FILENO, &read_fds);
             FD_SET(client, &read_fds);
@@ -327,9 +332,10 @@ void createNewServer(const User user) {
                 exit(EXIT_FAILURE);
             }
 
-            if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
+            // verifica se há entrada do utilizador disponível no teclado
+            if (FD_ISSET(STDIN_FILENO, &read_fds)) {
                 
-                // Handle user input
+                // guarda mensagem em "msgToSend"
                 if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
 
                     // Verifica se o utilizador quer sair
@@ -337,7 +343,7 @@ void createNewServer(const User user) {
                         sendString(client, "Disconnected\n");
                         free(msgReceived);
                         msgReceived = NULL;
-                        msgReceived = receiveString(client);
+                        msgReceived = receiveString(client, false);
 
                         if (msgReceived && strcmp(msgReceived, "Disconnected\n") == 0) {
                             disconnectRequested = true;
@@ -370,7 +376,7 @@ void createNewServer(const User user) {
             if (FD_ISSET(client, &read_fds)) {
                 
                 // Handle message from client
-                char *newMsgReceived = receiveString(client);
+                char *newMsgReceived = receiveString(client, true);
 
                 if (newMsgReceived && strcmp(newMsgReceived, "Disconnected\n") == 0) {
                     sendString(client, "Disconnected\n");
@@ -380,7 +386,7 @@ void createNewServer(const User user) {
                     break;
 
                 } else if (newMsgReceived) {
-                    printf("%s\n", newMsgReceived);
+                    printf("%s", newMsgReceived);
                     free(newMsgReceived);
                 }
             }
@@ -400,7 +406,7 @@ void sendString(int fd, char *msg) {
 	write(fd, msg, 1 + strlen(msg));
 }
 
-char *receiveString(int fd) {
+char *receiveString(int fd, bool mensagens) {
 	int nread = 0;
 	char buffer[BUF_SIZE];
 	char *string;
@@ -410,9 +416,12 @@ char *receiveString(int fd) {
 	string = (char *)malloc(strlen(buffer) + 1);
 	strcpy(string, buffer);
 	
-    if(string[0]=='\n') printf("\e[1;1H\e[2J");
+    if(string[0] == '\n') 
+        printf("\e[1;1H\e[2J");
 	
-    printf("%s", string);
+    if (!mensagens)
+        printf("%s", string);
+
 	fflush(stdout);
 	return string;
 }
