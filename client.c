@@ -137,7 +137,8 @@ int serverConnection(int argc, char *argv[]) {
 	return fd;
 }
 
-void connectingToClientServer(const User user, const User conversa) { // conecta-se ao outro cliente para conversas
+// conecta-se ao outro cliente para conversas
+void connectingToClientServer(const User user, const User conversa) {
 
 	int fd;
 	struct sockaddr_in addr;
@@ -175,74 +176,78 @@ void connectingToClientServer(const User user, const User conversa) { // conecta
 		fd_set read_fds;
         int max_fd;
 
-
 		while (!disconnectRequested) {
-        FD_ZERO(&read_fds);
-        FD_SET(STDIN_FILENO, &read_fds);
-        FD_SET(fd, &read_fds);
-        max_fd = fd > STDIN_FILENO ? fd : STDIN_FILENO;
+            FD_ZERO(&read_fds);
+            FD_SET(STDIN_FILENO, &read_fds);
+            FD_SET(fd, &read_fds);
+            max_fd = fd > STDIN_FILENO ? fd : STDIN_FILENO;
 
-        if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
-            perror("select");
-            exit(EXIT_FAILURE);
-        }
+            if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
+                perror("select");
+                exit(EXIT_FAILURE);
+            }
 
-        if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
-            // Handle user input
-            if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
-                if (strcmp(msgToSend, "\n") == 0) {
-                    sendString(fd, "Disconnected\n");
+            if (FD_ISSET(STDIN_FILENO, &read_fds)) { // verifica se há entrada do utilizador disponível no teclado
+                
+                // Handle user input
+                if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
+
+                    if (strcmp(msgToSend, "\n") == 0) {
+                        sendString(fd, "Disconnected\n");
+                        disconnectRequested = true;
+                        break;
+                    }
+
+                    char *filteredMessage = filteredString(msgToSend);
+                    strcpy(msgToSend, filteredMessage);
+
+                    char formattedMsg[BUF_SIZE];
+                    sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
+                    sendString(fd, formattedMsg);
+                    fflush(stdout);
+                }
+            }
+
+            if (FD_ISSET(fd, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
+                
+                // Handle message from client
+                if (msgReceived != NULL) {
+                    free(msgReceived);
+                    msgReceived = NULL;
+                }
+
+                msgReceived = receiveString(fd);
+
+                if (msgReceived == NULL) {
                     disconnectRequested = true;
                     break;
                 }
 
-                char *filteredMessage = filteredString(msgToSend);
-                strcpy(msgToSend, filteredMessage);
-
-                char formattedMsg[BUF_SIZE];
-                sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
-                sendString(fd, formattedMsg);
-                fflush(stdout);
+                if (strcmp(msgReceived, "Disconnected\n") == 0) {
+                    sendString(fd, "Disconnected\n");
+                    disconnectRequested = true;
+                    free(msgReceived);
+                    msgReceived = NULL;
+                    break;
+                } 
+                
+                else {
+                    printf("%s\n", msgReceived);
+                }
             }
         }
 
-        if (FD_ISSET(fd, &read_fds)) { // verifica se há dados disponíveis no socket do cliente
-            // Handle message from client
-            if (msgReceived != NULL) {
-                free(msgReceived);
-                msgReceived = NULL;
-            }
-
-            msgReceived = receiveString(fd);
-
-            if (msgReceived == NULL) {
-                disconnectRequested = true;
-                break;
-            }
-
-            if (strcmp(msgReceived, "Disconnected\n") == 0) {
-                sendString(fd, "Disconnected\n");
-                disconnectRequested = true;
-                free(msgReceived);
-                msgReceived = NULL;
-                break;
-            } else {
-                printf("%s\n", msgReceived);
-            }
+        if (msgReceived != NULL) {
+            free(msgReceived);
         }
-    }
 
-    if (msgReceived != NULL) {
-        free(msgReceived);
-    }
-
-    close(fd);
-
-    fflush(stdout);
+        close(fd);
+        fflush(stdout);
 	}
 }
 
-void createNewServer(const User user) { // torna o client num server à espera de uma conexão
+// torna o client num server à espera de uma conexão
+void createNewServer(const User user) {
 
 	int fd, client;
 	struct sockaddr_in addr, client_addr;
