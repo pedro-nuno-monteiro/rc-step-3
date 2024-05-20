@@ -9,8 +9,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <ctype.h>
+#include <sys/select.h>
 
-#define SERVER_PORT 9001
+#define SERVER_PORT 9000
 #define BUF_SIZE 1024
 #define MAX_USERS 50
 #define MAX_GROUP 10
@@ -92,6 +93,7 @@ void deleteWord(int client_fd); //func para eliminar uma palavra bloqueada
 bool checkDuplicateUsername(char *username);
 int checkCredentials(char *username, char *password);
 void createBlockUsersFile();
+void createWordsFile();
 // CONVERSATIONS FILE
 void createConversationsFileLog();
 void addConversation(const char *username1, const char *username2, int port);
@@ -141,6 +143,7 @@ int main() {
 		client = accept(fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_size);
 		if (client > 0) {
 			createUsersFile();
+			createWordsFile();
 			createBlockUsersFile();
 			createConversationsFileLog();
 			createGroupConversationsFileLog();
@@ -347,10 +350,10 @@ void conversationsMenu(int client_fd, const User user, bool admin) {
 	while(selection != 4) {
 		char string[200]; 
 		if (admin == false) {
-			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n1. Private\n2. Group\n3. Block users\n4. Log out\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
+			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n\n1. Private\n2. Group\n3. Block users\n4. Log out\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
 		}
 		else {
-			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n1. Private\n2. Group\n3. Block users\n4. Log out\n5. Filter Words\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
+			snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE CONVERSATIONS MENU\n\n1. Private\n2. Group\n3. Block users\n4. Log out\n5. Filter Words\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
 		}
 		
 		sendString(client_fd, string);
@@ -1012,6 +1015,21 @@ void createConversationsFileLog() { // cria o ficheira das conversas
     } else {
         fclose(file);
     }
+}
+
+void createWordsFile() { // cria o ficheiro das palavras bloqueadas
+	FILE *file = fopen("words.bin", "r");
+	if (file == NULL) {
+		file = fopen("words.bin", "wb");
+		if (file == NULL) {
+			perror("Error creating file");
+			exit(1);
+		}
+
+		fclose(file);
+	} else {
+		fclose(file);
+	}
 }
 
 void addConversation(const char *username1, const char *username2, int port) { // adiciona uma conversa -> dois users e o porto em qual está designada a conversa
