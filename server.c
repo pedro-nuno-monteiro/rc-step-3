@@ -1154,8 +1154,9 @@ User activeConversations(int client_fd, const User user) { // retorna as pessoas
 }
 
 // GROUP CONVERSATIONS
-void chooseAvailableUsersForGroupConversation(int client_fd, const User user, char selected_usernames[][50], int *num_selected) {
-    FILE *file = fopen("users.bin", "rb");
+void chooseAvailableUsersForGroupConversation(int client_fd, const User user, char selected_usernames[][50], int *num_selected) { 
+	// Escolhe os users disponíveis para criar um grupo
+	FILE *file = fopen("users.bin", "rb");
     if (file == NULL) {
         *num_selected = 0;
         return;
@@ -1197,7 +1198,6 @@ void chooseAvailableUsersForGroupConversation(int client_fd, const User user, ch
         sendString(client_fd, choices_to_send);
         selection_str = receiveString(client_fd);
 
-        // Split the received string by commas and convert to integers
         char *token = strtok(selection_str, ",");
         selection_count = 0;
         while (token != NULL && selection_count < MAX_USERS) {
@@ -1206,24 +1206,22 @@ void chooseAvailableUsersForGroupConversation(int client_fd, const User user, ch
         }
         free(selection_str);
 
-        // Check if the last option (finish selection) is chosen
         if (selection_count > 0 && selection[selection_count - 1] == counter) {
             break;
         }
     }
 
-    // Add the current user's username to the selected usernames
     *num_selected = 0;
     strcpy(selected_usernames[(*num_selected)++], user.username);
 
-    for (int i = 0; i < selection_count - 1; i++) { // Exclude the last option which is the finish selection
+    for (int i = 0; i < selection_count - 1; i++) {
         if (selection[i] > 0 && selection[i] < counter) {
             strcpy(selected_usernames[(*num_selected)++], available_users[selection[i] - 1].username);
         }
     }
 }
 
-void groupConversationsMenu(int client_fd, const User user) {
+void groupConversationsMenu(int client_fd, const User user) { // Menu das conversas de Grupo
     int selection = -1;
 
     while (selection != 4) {
@@ -1273,7 +1271,7 @@ void groupConversationsMenu(int client_fd, const User user) {
     }
 }
 
-void createGroupConversationsFileLog() { // cria o ficheira das conversas de grupo
+void createGroupConversationsFileLog() { // cria o ficheiro das conversas de grupo
     FILE *file = fopen("groupConversationsLog.bin", "r");
     if (file == NULL) {
         file = fopen("groupConversationsLog.bin", "wb");
@@ -1288,7 +1286,7 @@ void createGroupConversationsFileLog() { // cria o ficheira das conversas de gru
     }
 }
 
-int addGroupConversation(int num_users, char usernames[][50]) {
+int addGroupConversation(int num_users, char usernames[][50]) { // adiciona uma conversa de grupo no ficheiro
     FILE *file = fopen("groupConversationsLog.bin", "ab+");
     if (file == NULL) {
         perror("Error opening file");
@@ -1323,7 +1321,7 @@ int addGroupConversation(int num_users, char usernames[][50]) {
 	return port;
 }
 
-void deleteGroupConversation(int port) {
+void deleteGroupConversation(int port) { // Apaga uma conversa de grupo
     FILE *file = fopen("groupConversationsLog.bin", "rb");
     if (file == NULL) {
         perror("Error opening file");
@@ -1360,7 +1358,7 @@ void deleteGroupConversation(int port) {
     }
 }
 
-int checkExistingGroupConversation(int num_users, char usernames[][50]) {
+int checkExistingGroupConversation(int num_users, char usernames[][50]) { // Verifica se a conversa de grupo já existe
     FILE *file = fopen("groupConversationsLog.bin", "rb");
     if (file == NULL) {
         perror("Error opening file");
@@ -1395,7 +1393,7 @@ int checkExistingGroupConversation(int num_users, char usernames[][50]) {
     return -1;
 }
 
-GroupConversation activeGroupConversations(int client_fd, const char *username) {
+GroupConversation activeGroupConversations(int client_fd, const char *username) { // Devolve o nome dos users e o porto das conversas de grupo que estão ativas
     FILE *file = fopen("groupConversationsLog.bin", "rb");
     if (file == NULL) {
         GroupConversation nulo = { .num_users = 0, .port = 0 };
