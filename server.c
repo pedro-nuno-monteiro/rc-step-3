@@ -1230,7 +1230,7 @@ void groupConversationsMenu(int client_fd, const User user) { // Menu das conver
         sendString(client_fd, string);
         selection = atoi(receiveString(client_fd));
 
-        if (selection == 1 || selection == 2 || selection == 3 || selection == 4 || selection == 5) {
+        if (selection == 1 || selection == 2 || selection == 3 || selection == 4) {
             if (selection == 1) { // Show ongoing group conversations
                 GroupConversation conversation = activeGroupConversations(client_fd, user.username);
                 if (strcmp(conversation.usernames[0], "") != 0) {
@@ -1265,7 +1265,7 @@ void groupConversationsMenu(int client_fd, const User user) { // Menu das conver
                 receiveString(client_fd);
             }
         } else {
-            sendString(client_fd, "\nINVALID SELECTION, please press 1, 2, 3, 4, or 5 (Press ENTER to continue...)\n");
+            sendString(client_fd, "\nINVALID SELECTION, please press 1, 2, 3 or 4 (Press ENTER to continue...)\n");
             receiveString(client_fd);
         }
     }
@@ -1286,7 +1286,7 @@ void createGroupConversationsFileLog() { // cria o ficheiro das conversas de gru
     }
 }
 
-int addGroupConversation(int num_users, char usernames[][50]) { // adiciona uma conversa de grupo no ficheiro
+int addGroupConversation(int num_users, char usernames[][50]) {
     FILE *file = fopen("groupConversationsLog.bin", "ab+");
     if (file == NULL) {
         perror("Error opening file");
@@ -1295,15 +1295,16 @@ int addGroupConversation(int num_users, char usernames[][50]) { // adiciona uma 
 
     fseek(file, 0, SEEK_SET);
 
-    int max_port = PORT_START;
+    int max_port = PORT_START - 1; // Initialize to one less than PORT_START
     GroupConversation conversation;
+
     while (fread(&conversation, sizeof(GroupConversation), 1, file) == 1) {
         if (conversation.port > max_port) {
             max_port = conversation.port;
         }
     }
 
-    int port = (max_port == PORT_START) ? PORT_START : (max_port + 1);
+    int port = max_port + 1; // Increment to get the next available port
 
     conversation.num_users = num_users;
     for (int i = 0; i < num_users; i++) {
@@ -1318,7 +1319,7 @@ int addGroupConversation(int num_users, char usernames[][50]) { // adiciona uma 
 
     printf("Group Conversation added successfully with port %d.\n", port);
 
-	return port;
+    return port;
 }
 
 void deleteGroupConversation(int port) { // Apaga uma conversa de grupo
