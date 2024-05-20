@@ -73,7 +73,6 @@ void logoutUser(User user);	//quando o user faz logout, o seu estado é alterado
 void conversationsMenu(int client_fd, const User user, bool admin);
 void privateCommunicationMenu(int client_fd, const User user);
 
-
 User chooseAvailableUsers(int client_fd, const User user);
 void getOnlineUsers(int client_fd, const User user);	//menu que retribui todos os users online
 
@@ -94,6 +93,7 @@ bool checkDuplicateUsername(char *username);
 int checkCredentials(char *username, char *password);
 void createBlockUsersFile();
 void createWordsFile();
+
 // CONVERSATIONS FILE
 void createConversationsFileLog();
 void addConversation(const char *username1, const char *username2, int port);
