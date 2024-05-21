@@ -14,7 +14,7 @@
 #define SERVER_PORT 9000
 #define BUF_SIZE 1024
 #define MAX_USERS 50
-#define MAX_GROUP 10
+#define MAX_GROUP 15
 #define MAX_CONVERSATIONS 10
 #define MAX_WORDS 50
 
@@ -52,19 +52,21 @@ typedef struct {
     char usernames[MAX_GROUP][50];
     int num_users;
     int port;
-} GroupConversation;
+} ChatGrupo;
 
 typedef struct {
-    GroupConversation *conversations;
+    ChatGrupo * conversas;
     int count;
-} GroupConversationList;
+} ChatGrupoLista;
 
+// ajudas
 void erro(char *msg);
-// COMMUNICATION
-void sendString(int client_fd, char *msg);
-char *receiveString(int client_fd);
 
-// MENUS
+// comunicações
+void sendString(int client_fd, char *msg);
+char * receiveString(int client_fd);
+
+// menus
 void mainMenu(int client_fd);
 void signupMenu(int client_fd);
 void loginMenu(int client_fd);
@@ -81,8 +83,7 @@ void filterWords(int client_fd);
 void blockUsers(int client_fd, User user); //func para bloquear users
 bool notBlocked(User user, User user_lista); //função que retorna se o user está ou não bloqueado
 
-// FILES
-// USERS FILE
+// ficheiros
 void createUsersFile();
 void seeUsers();
 void seeWords(int client_fd);
@@ -94,21 +95,21 @@ int checkCredentials(char *username, char *password);
 void createBlockUsersFile();
 void createWordsFile();
 
-// CONVERSATIONS FILE
-void createConversationsFileLog();
-void addConversation(const char *username1, const char *username2, int port);
-void deleteConversation(const char *username1, const char *username2);
-int checkExistingConversation(const char *username1, const char *username2);
-User activeConversations(int client_fd, const User user);
+// ficheiros de conversas
+void createChatGrupoLogFile();
+void adicionaConversa(const char *username1, const char *username2, int port);
+void eliminaConversa(const char *username1, const char *username2);
+int verificaConversas(const char *username1, const char *username2);
+User conversasAtivas(int client_fd, const User user);
 
-// GROUP CONVERSATIONS
-void groupConversationsMenu(int client_fd, const User user);
-void chooseAvailableUsernamesForGroupConversation(int client_fd, const User user, char selected_usernames[][50], int *num_selected);
-void createGroupConversationsFileLog();
-int addGroupConversation(int num_users, char usernames[][50]);
-void deleteGroupConversation(int port);
-int checkExistingGroupConversation(int num_users, char usernames[][50]);
-GroupConversation activeGroupConversations(int client_fd, const char *username);
+// Chat grupo
+void menuChatGrupo(int client_fd, const User user);
+void escolheUsersChatGrupo(int client_fd, const User user, char selected_usernames[][50], int *num_selected);
+void createChatGrupoFile();
+int adicionarChatGrupo(int num_users, char usernames[][50]);
+void eliminarChatGrupo(int port);
+int verificaExistente(int num_users, char usernames[][50]);
+ChatGrupo ChatsGrupoAtivos(int client_fd, const char *username);
 
 int main() {
 	printf("\e[1;1H\e[2J");
@@ -141,21 +142,24 @@ int main() {
 		
 		while (waitpid(-1, NULL, WNOHANG) > 0);		
 		client = accept(fd, (struct sockaddr *)&client_addr, (socklen_t *)&client_addr_size);
-		if (client > 0) {
+		
+        if (client > 0) {
+            
 			createUsersFile();
 			createWordsFile();
 			createBlockUsersFile();
-			createConversationsFileLog();
-			createGroupConversationsFileLog();
-			if (fork() == 0) {
+			createChatGrupoLogFile();
+			createChatGrupoFile();
+		
+        	if (fork() == 0) {
 				close(fd);
 				printf("Connected with a client\n");
 				fflush(stdout);
 				mainMenu(client);
 				exit(0);
 			}
-			close(client);
-		}
+        	close(client);
+        }
 	}
 	return 0;
 }
@@ -365,7 +369,7 @@ void conversationsMenu(int client_fd, const User user, bool admin) {
 				selection = -1;
 			}
 			if (selection == 2) {
-				groupConversationsMenu(client_fd, user);
+				menuChatGrupo(client_fd, user);
 				selection = -1;
 			}
 			if (selection == 3) {
@@ -401,8 +405,10 @@ void privateCommunicationMenu(int client_fd, const User user) {
 		selection = atoi(receiveString(client_fd));
 
 		if (selection == 1 || selection == 2 || selection == 3 || selection == 4) {
-			if (selection == 1) { // mostra se algum user já começou uma conversa e está à espera da sua conexão
-				User conversa = activeConversations(client_fd, user);
+
+            // mostra se algum user já começou uma conversa e está à espera da sua conexão
+			if (selection == 1) {
+				User conversa = conversasAtivas(client_fd, user);
 				if(strcmp(conversa.username, "") != 0){ 
 					char string[100];
 					snprintf(string, sizeof(string), "Start a conversation: %.*s -> %.*s %d\n", (int)(strlen(user.username) - 1), user.username, (int)(strlen(conversa.username) - 1), conversa.username, conversa.port);
@@ -411,44 +417,53 @@ void privateCommunicationMenu(int client_fd, const User user) {
 				}
 				selection = -1;
 			}
-			if (selection == 2) { // começa uma nova conversa ou conecta-se a uma já existente
+
+            // começa uma nova conversa ou conecta-se a uma já existente
+			if (selection == 2) {
 				User conversa = chooseAvailableUsers(client_fd, user);
 
-				if(strcmp(conversa.username, "") != 0 && strcmp(conversa.password, "") != 0) { // Se não retornar nulo
-					if(checkExistingConversation(user.username, conversa.username)){  // se o server para a conversa já tiver sido criada pelo outro user, este apenas se conecta
+                // Se não retornar nulo
+				if(strcmp(conversa.username, "") != 0 && strcmp(conversa.password, "") != 0) {
+
+                    // se o server para a conversa já tiver sido criada pelo outro user, este apenas se conecta
+					if(verificaConversas(user.username, conversa.username)) { 
 						char string[100];
 						snprintf(string, sizeof(string), "Start a conversation: %.*s -> %.*s %d\n", (int)(strlen(user.username) - 1), user.username, (int)(strlen(conversa.username) - 1), conversa.username, conversa.port);
 						sendString(client_fd, string);
 						receiveString(client_fd);
 					}
+
 					else { // se não existir a conversa ainda
-						addConversation(user.username, conversa.username, user.port); // cria a conversa no ficheiro binário para confirmação futura
+						adicionaConversa(user.username, conversa.username, user.port); // cria a conversa no ficheiro binário para confirmação futura
 						char string[100];
 						snprintf(string, sizeof(string), "Creating a new server: %.*s %d\n", (int)(strlen(user.username) - 1), user.username, user.port); // envia a string para o cliente cria um server
 						sendString(client_fd, string);
 						receiveString(client_fd);
-						deleteConversation(user.username, conversa.username); // apaga a conversa do ficheiro
+						eliminaConversa(user.username, conversa.username); // apaga a conversa do ficheiro
 					}
 				}
 				selection = -1;
 			}
+
 			if (selection == 3) {
 				getOnlineUsers(client_fd, user);
 				selection = -1;
 			}
+
 			if (selection == 4) {
 				sendString(client_fd, "\nReturning to Conversations Menu! (Press ENTER to continue...)\n");
 				receiveString(client_fd);
 			}
 		}
 		else {
-			sendString(client_fd, "\nINVALID SELECTION, please press 1, 2, 3, 4 or 5 (Press ENTER to continue...)\n");
+			sendString(client_fd, "\nINVALID SELECTION, please press 1, 2, 3 or 4 (Press ENTER to continue...)\n");
 			receiveString(client_fd);
 		}
 	}
 }
 
-bool notBlocked(User user, User user_lista) {	//função que retorna se o user está ou não bloqueado
+//função que retorna se o user está ou não bloqueado
+bool notBlocked(User user, User user_lista) {
 	FILE *file_2 = fopen("block_users.bin", "rb");
     if (file_2 == NULL) {
 		printf("erro no file Blocked");
@@ -1000,12 +1015,15 @@ int checkCredentials(char *username, char *password) { // confirma se as credenc
     return -1;
 }
 
-// CONVERSATIONS FILE
+// ficheiros conversas
+// cria o ficheira das conversas
+void createChatGrupoLogFile() {
 
-void createConversationsFileLog() { // cria o ficheira das conversas
-    FILE *file = fopen("conversationsLog.bin", "r");
+    FILE *file = fopen("conversas.bin", "r");
+    
     if (file == NULL) {
-        file = fopen("conversationsLog.bin", "wb");
+        file = fopen("conversas.bin", "wb");
+    
         if (file == NULL) {
             perror("Error creating file");
             exit(1);
@@ -1017,8 +1035,11 @@ void createConversationsFileLog() { // cria o ficheira das conversas
     }
 }
 
-void createWordsFile() { // cria o ficheiro das palavras bloqueadas
+// cria o ficheiro das palavras bloqueadas
+void createWordsFile() {
+
 	FILE *file = fopen("words.bin", "r");
+
 	if (file == NULL) {
 		file = fopen("words.bin", "wb");
 		if (file == NULL) {
@@ -1027,13 +1048,18 @@ void createWordsFile() { // cria o ficheiro das palavras bloqueadas
 		}
 
 		fclose(file);
-	} else {
+	} 
+    
+    else {
 		fclose(file);
 	}
 }
 
-void addConversation(const char *username1, const char *username2, int port) { // adiciona uma conversa -> dois users e o porto em qual está designada a conversa
-    FILE *file = fopen("conversationsLog.bin", "ab");
+// adiciona uma conversa: dois users e 1 porto onde está a conversa
+void adicionaConversa(const char *username1, const char *username2, int port) {
+
+    FILE *file = fopen("conversas.bin", "ab");
+    
     if (file == NULL) {
         perror("Error opening file");
         exit(1);
@@ -1051,47 +1077,55 @@ void addConversation(const char *username1, const char *username2, int port) { /
     printf("Conversation added successfully.\n");
 }
 
-void deleteConversation(const char *username1, const char *username2) { // apaga a conversa assim que esta acaba
-    FILE *file = fopen("conversationsLog.bin", "rb");
+// apaga a conversa assim que esta acaba
+void eliminaConversa(const char *username1, const char *username2) {
+
+    FILE *file = fopen("conversas.bin", "rb");
+    
     if (file == NULL) {
         perror("Error opening file");
         exit(1);
     }
 
-    FILE *tempFile = fopen("tempFile.bin", "wb"); // ficheiro auxiliar para guardar a informação exceto a da conversa que vai ser apagada
-    if (tempFile == NULL) {
+    // ficheiro auxiliar para guardar a informação exceto a da conversa que vai ser apagada
+    FILE * aux = fopen("aux.bin", "wb");
+    if (aux == NULL) {
         perror("Error creating temporary file");
         fclose(file);
         exit(1);
     }
 
     Conversation conversation;
-    bool deleted = false;
+    bool elimina = false;
 
     while (fread(&conversation, sizeof(Conversation), 1, file) == 1) {
-        if ((strcmp(conversation.username1, username1) == 0 && strcmp(conversation.username2, username2) == 0) ||
-            (strcmp(conversation.username1, username2) == 0 && strcmp(conversation.username2, username1) == 0)) {
-            deleted = true;
-        } else {
-            fwrite(&conversation, sizeof(Conversation), 1, tempFile);
+    
+        if ((strcmp(conversation.username1, username1) == 0 && strcmp(conversation.username2, username2) == 0) || (strcmp(conversation.username1, username2) == 0 && strcmp(conversation.username2, username1) == 0)) {
+            elimina = true;
+        } 
+        
+        else {
+            fwrite(&conversation, sizeof(Conversation), 1, aux);
         }
     }
 
     fclose(file);
-    fclose(tempFile);
+    fclose(aux);
 
-    if (!deleted) {
-        printf("Conversation not found.\n");
+    if (!elimina) {
+        printf("Conversa não encontrada.\n");
     } else {
-        printf("Conversation deleted successfully.\n");
+        printf("Conversa eliminada.\n");
     }
 
-    remove("conversationsLog.bin"); // apaga-se o ficheiro inicial
-    rename("tempFile.bin", "conversationsLog.bin"); // muda-se o nome do ficheiro auxiliar para o nome antigo
+    remove("conversas.bin");
+    rename("aux.bin", "conversas.bin");
 }
 
-bool checkExistingConversation(const char *username1, const char *username2) { // confirma se existe uma conversa que já começou
-    FILE *file = fopen("conversationsLog.bin", "rb");
+// confirma se existe uma conversa que já começou
+bool verificaConversas(const char * username1, const char * username2) {
+
+    FILE *file = fopen("conversas.bin", "rb");
     if (file == NULL) {
         perror("Error opening file");
         exit(1);
@@ -1100,19 +1134,23 @@ bool checkExistingConversation(const char *username1, const char *username2) { /
     Conversation conversation;
 
     while (fread(&conversation, sizeof(Conversation), 1, file) == 1) {
-        if ((strcmp(conversation.username1, username1) == 0 && strcmp(conversation.username2, username2) == 0) ||
-            (strcmp(conversation.username1, username2) == 0 && strcmp(conversation.username2, username1) == 0)) {
+
+        if ((strcmp(conversation.username1, username1) == 0 && strcmp(conversation.username2, username2) == 0) || (strcmp(conversation.username1, username2) == 0 && strcmp(conversation.username2, username1) == 0)) {
             fclose(file);
             return true;
         }
+
     }
 
     fclose(file);
     return false;
 }
 
-User activeConversations(int client_fd, const User user) { // retorna as pessoas que estão à espera de uma conexão deste user
-    FILE *file = fopen("conversationsLog.bin", "rb");
+// retorna as pessoas que estão à espera de uma conexão deste user
+User conversasAtivas(int client_fd, const User user) {
+
+    FILE *file = fopen("conversas.bin", "rb");
+    
     if (file == NULL) {
         User nulo = { "", "", 0 };
         return nulo;
@@ -1120,31 +1158,34 @@ User activeConversations(int client_fd, const User user) { // retorna as pessoas
 
     User available_users[MAX_USERS];
     int counter = 0;
-    char choices_to_send[1000] = "\nACTIVE CONVERSATIONS\n\n";
+    char choices_to_send[1000] = "\nConversas Atuais\n\n";
     char counter_str[5];
 
-    Conversation conversations[MAX_USERS - 1];
-    size_t num_conversations = fread(conversations, sizeof(Conversation), MAX_USERS - 1, file);
+    Conversation conversas[MAX_USERS - 1];
+    size_t num_conversations = fread(conversas, sizeof(Conversation), MAX_USERS - 1, file);
 
     fclose(file);
 
     for (size_t i = 0; i < num_conversations; i++) {
-        if (strcmp(conversations[i].username1, user.username) == 0) {
-            strcpy(available_users[counter].username, conversations[i].username2);
-            available_users[counter].port = conversations[i].port;
+
+        if (strcmp(conversas[i].username1, user.username) == 0) {
+            strcpy(available_users[counter].username, conversas[i].username2);
+            available_users[counter].port = conversas[i].port;
             counter++;
             sprintf(counter_str, "%d", counter);
             strcat(choices_to_send, counter_str);
             strcat(choices_to_send, ". ");
-            strcat(choices_to_send, conversations[i].username2);
-        } else if (strcmp(conversations[i].username2, user.username) == 0) {
-            strcpy(available_users[counter].username, conversations[i].username1);
-            available_users[counter].port = conversations[i].port;
+            strcat(choices_to_send, conversas[i].username2);
+        } 
+        
+        else if (strcmp(conversas[i].username2, user.username) == 0) {
+            strcpy(available_users[counter].username, conversas[i].username1);
+            available_users[counter].port = conversas[i].port;
             counter++;
             sprintf(counter_str, "%d", counter);
             strcat(choices_to_send, counter_str);
             strcat(choices_to_send, ". ");
-            strcat(choices_to_send, conversations[i].username1);
+            strcat(choices_to_send, conversas[i].username1);
         }
     }
 
@@ -1156,13 +1197,17 @@ User activeConversations(int client_fd, const User user) { // retorna as pessoas
 
     int selection = -1;
     while (1) {
+        
         sendString(client_fd, choices_to_send);
         selection = atoi(receiveString(client_fd));
 
-        if (selection == counter) { // Sair
+        // Return to the previous menu
+        if (selection == counter) {
             User nulo = { "", "", 0 };
             return nulo;
-        } else if (selection >= 0 && selection < counter) {
+        } 
+        
+        else if (selection >= 0 && selection < counter) {
 			return available_users[selection - 1];
         }
     }
@@ -1171,12 +1216,13 @@ User activeConversations(int client_fd, const User user) { // retorna as pessoas
     return nulo;
 }
 
-// GROUP CONVERSATIONS
-void chooseAvailableUsersForGroupConversation(int client_fd, const User user, char selected_usernames[][50], int *num_selected) { 
+// chat GRUPO
+void escolheUsersChatGrupo(int client_fd, const User user, char selected_usernames[][50], int * escolhido) { 
+
 	// Escolhe os users disponíveis para criar um grupo
 	FILE *file = fopen("users.bin", "rb");
     if (file == NULL) {
-        *num_selected = 0;
+        * escolhido = 0;
         return;
     }
 
@@ -1186,11 +1232,12 @@ void chooseAvailableUsersForGroupConversation(int client_fd, const User user, ch
 
     fclose(file);
 
-    char choices_to_send[1000] = "\nSTART A NEW GROUP CONVERSATION\n\n";
+    char choices_to_send[1000] = "\nComeçar novo chat GRUPO\n\n";
     int counter = 0;
     char counter_str[5];
 
-    for (size_t i = 0; i < num_users; i++) { // apenas escolhe quem está online e não está bloqueado
+    // escolhe quem está online e não bloqueado
+    for (size_t i = 0; i < num_users; i++) {
         if (strcmp(users[i].username, user.username) != 0 && users[i].logged_in && notBlocked(user, users[i]) && notBlocked(users[i], user)) {
             available_users[counter] = users[i];
             counter++;
@@ -1206,106 +1253,141 @@ void chooseAvailableUsersForGroupConversation(int client_fd, const User user, ch
     sprintf(counter_str, "%d", counter);
     strcat(choices_to_send, counter_str);
     strcat(choices_to_send, ". ");
-    strcat(choices_to_send, "Finish selection and start group conversation\n\nSelection (comma separated): ");
+    strcat(choices_to_send, "Selecione os users, separados por virgulas (incluindo este)\n\nUsers: ");
 
-    int selection[MAX_USERS];
-    int selection_count = 0;
-    char *selection_str;
+    int escolhidos[MAX_USERS];
+    int numero_users = 0;
+    char * escolhidos_string;
+
 
     while (1) {
-        sendString(client_fd, choices_to_send);
-        selection_str = receiveString(client_fd);
 
-        char *token = strtok(selection_str, ",");
-        selection_count = 0;
-        while (token != NULL && selection_count < MAX_USERS) {
-            selection[selection_count++] = atoi(token);
+        sendString(client_fd, choices_to_send);
+        escolhidos_string = receiveString(client_fd);
+
+        char * token = strtok(escolhidos_string, ",");
+        
+        numero_users = 0;
+        
+        // verifica os vários escolhidos
+        while (token != NULL && numero_users < MAX_USERS) {
+            escolhidos[numero_users++] = atoi(token);
             token = strtok(NULL, ",");
         }
-        free(selection_str);
+        
+        free(escolhidos_string);
 
-        if (selection_count > 0 && selection[selection_count - 1] == counter) {
+        // verifica se o último escolhido é o último
+        if (numero_users > 0 && escolhidos[numero_users - 1] == counter) {
             break;
         }
     }
 
-    *num_selected = 0;
-    strcpy(selected_usernames[(*num_selected)++], user.username);
+    * escolhido = 0;
+    strcpy(selected_usernames[(* escolhido)++], user.username);
 
-    for (int i = 0; i < selection_count - 1; i++) {
-        if (selection[i] > 0 && selection[i] < counter) {
-            strcpy(selected_usernames[(*num_selected)++], available_users[selection[i] - 1].username);
+    for (int i = 0; i < numero_users - 1; i++) {
+
+        // verifica se o escolhido é válido
+        if (escolhidos[i] > 0 && escolhidos[i] < counter) {
+
+            // copia o username
+            strcpy(selected_usernames[(* escolhido)++], available_users[escolhidos[i] - 1].username);
         }
+
     }
 }
 
-void groupConversationsMenu(int client_fd, const User user) { // Menu das conversas de Grupo
+// Menu Chat Grupo
+void menuChatGrupo(int client_fd, const User user) {
+
     int selection = -1;
 
     while (selection != 4) {
+
         char string[300];
         snprintf(string, sizeof(string), "\nWELCOME %.*s TO THE GROUP CONVERSATIONS MENU\n\n1. See ongoing group conversations\n2. Start a new group conversation\n3. See who's online\n4. Exit Menu\n\nSelection: ", (int)(strlen(user.username) - 1), user.username);
         sendString(client_fd, string);
         selection = atoi(receiveString(client_fd));
 
         if (selection == 1 || selection == 2 || selection == 3 || selection == 4) {
-            if (selection == 1) { // Show ongoing group conversations
-                GroupConversation conversation = activeGroupConversations(client_fd, user.username);
+
+            // Show ongoing group conversations
+            if (selection == 1) {
+
+                ChatGrupo conversation = ChatsGrupoAtivos(client_fd, user.username);
+
                 if (strcmp(conversation.usernames[0], "") != 0) {
                     char string[100];
-                    snprintf(string, sizeof(string), "Joining group conversation in port %d: %s\n", conversation.port, user.username);
+                    snprintf(string, sizeof(string), "A entrar em chat grupo, port %d: %s\n", conversation.port, user.username);
                     sendString(client_fd, string);
                     receiveString(client_fd);
                 }
                 selection = -1;
             }
-            if (selection == 2) { // Start a new group conversation
-                char selected_usernames[MAX_GROUP][50];;
-                int num_selected;
-                chooseAvailableUsersForGroupConversation(client_fd, user, selected_usernames, &num_selected);
 
+            // Iniciar nova conversa de grupo
+            if (selection == 2) {
+
+                char selected_usernames[MAX_GROUP][50];
+                int num_selected;
+                escolheUsersChatGrupo(client_fd, user, selected_usernames, &num_selected);
+
+                // Verifica se a conversa já existe
                 if (num_selected > 1) {
-                    int port = addGroupConversation(num_selected, selected_usernames);
+                    int port = adicionarChatGrupo(num_selected, selected_usernames);
                     char string[100];
                     snprintf(string, sizeof(string), "New group conversation created by %s in port %d\n", user.username, port);
                     sendString(client_fd, string);
                     receiveString(client_fd);
-					deleteGroupConversation(port);
+					eliminarChatGrupo(port);
                 }
+
                 selection = -1;
             }
             if (selection == 3) { // See who's online
                 getOnlineUsers(client_fd, user);
                 selection = -1;
             }
+
             if (selection == 4) { // Exit menu
                 sendString(client_fd, "\nReturning to Main Menu! (Press ENTER to continue...)\n");
                 receiveString(client_fd);
             }
-        } else {
+        } 
+        
+        else {
             sendString(client_fd, "\nINVALID SELECTION, please press 1, 2, 3 or 4 (Press ENTER to continue...)\n");
             receiveString(client_fd);
         }
     }
 }
 
-void createGroupConversationsFileLog() { // cria o ficheiro das conversas de grupo
-    FILE *file = fopen("groupConversationsLog.bin", "r");
+// cria o ficheiro das conversas de grupo
+void createChatGrupoFile() {
+
+    FILE *file = fopen("chatGrupo.bin", "r");
+    
     if (file == NULL) {
-        file = fopen("groupConversationsLog.bin", "wb");
+        file = fopen("chatGrupo.bin", "wb");
+    
         if (file == NULL) {
             perror("Error creating file");
             exit(1);
         }
 
         fclose(file);
-    } else {
+    } 
+    
+    else {
         fclose(file);
     }
 }
 
-int addGroupConversation(int num_users, char usernames[][50]) {
-    FILE *file = fopen("groupConversationsLog.bin", "ab+");
+// Adiciona uma conversa de grupo
+int adicionarChatGrupo(int num_users, char usernames[][50]) {
+
+    FILE *file = fopen("chatGrupo.bin", "ab+");
     if (file == NULL) {
         perror("Error opening file");
         exit(1);
@@ -1313,17 +1395,21 @@ int addGroupConversation(int num_users, char usernames[][50]) {
 
     fseek(file, 0, SEEK_SET);
 
-    int max_port = PORT_START - 1; // Initialize to one less than PORT_START
-    GroupConversation conversation;
+    // Encontra o porto mais alto
+    int max_port = PORT_START - 1;
+    ChatGrupo conversation;
 
-    while (fread(&conversation, sizeof(GroupConversation), 1, file) == 1) {
+    // Encontra o porto mais alto
+    while (fread(&conversation, sizeof(ChatGrupo), 1, file) == 1) {
+
         if (conversation.port > max_port) {
             max_port = conversation.port;
         }
     }
 
-    int port = max_port + 1; // Increment to get the next available port
+    int port = max_port + 1;
 
+    // Verifica se a conversa de grupo já existe
     conversation.num_users = num_users;
     for (int i = 0; i < num_users; i++) {
         strcpy(conversation.usernames[i], usernames[i]);
@@ -1331,7 +1417,7 @@ int addGroupConversation(int num_users, char usernames[][50]) {
     conversation.port = port;
 
     fseek(file, 0, SEEK_END);
-    fwrite(&conversation, sizeof(GroupConversation), 1, file);
+    fwrite(&conversation, sizeof(ChatGrupo), 1, file);
 
     fclose(file);
 
@@ -1340,26 +1426,34 @@ int addGroupConversation(int num_users, char usernames[][50]) {
     return port;
 }
 
-void deleteGroupConversation(int port) { // Apaga uma conversa de grupo
-    FILE *file = fopen("groupConversationsLog.bin", "rb");
+// Apaga uma conversa de grupo
+void eliminarChatGrupo(int port) {
+
+    FILE *file = fopen("chatGrupo.bin", "rb");
+
     if (file == NULL) {
         perror("Error opening file");
         exit(1);
     }
 
-    FILE *tempFile = fopen("temporary.bin", "wb");
+    FILE * tempFile = fopen("aux.bin", "wb");
+    
     if (tempFile == NULL) {
         perror("Error opening temporary file");
         fclose(file);
         exit(1);
     }
 
-    GroupConversation conversation;
+    ChatGrupo conversation;
     int found = 0;
-    while (fread(&conversation, sizeof(GroupConversation), 1, file) == 1) {
+    
+    while (fread(&conversation, sizeof(ChatGrupo), 1, file) == 1) {
+    
         if (conversation.port != port) {
-            fwrite(&conversation, sizeof(GroupConversation), 1, tempFile);
-        } else {
+            fwrite(&conversation, sizeof(ChatGrupo), 1, tempFile);
+        } 
+        
+        else {
             found = 1;
         }
     }
@@ -1368,39 +1462,58 @@ void deleteGroupConversation(int port) { // Apaga uma conversa de grupo
     fclose(tempFile);
 
     if (found) {
-        remove("groupConversationsLog.bin");
-        rename("temporary.bin", "groupConversationsLog.bin");
+        remove("chatGrupo.bin");
+        rename("aux.bin", "chatGrupo.bin");
         printf("Group Conversation with port %d deleted successfully.\n", port);
-    } else {
-        remove("temporary.bin");
+    } 
+    
+    else {
+        remove("aux.bin");
         printf("No Group Conversation found with port %d.\n", port);
     }
 }
 
-int checkExistingGroupConversation(int num_users, char usernames[][50]) { // Verifica se a conversa de grupo já existe
-    FILE *file = fopen("groupConversationsLog.bin", "rb");
+// Verifica se o chat de grupo já existe
+int verificaExistente(int num_users, char usernames[][50]) {
+
+    FILE *file = fopen("chatGrupo.bin", "rb");
+    
     if (file == NULL) {
         perror("Error opening file");
         return -1;
     }
 
-    GroupConversation conversation;
-    while (fread(&conversation, sizeof(GroupConversation), 1, file) == 1) {
+    ChatGrupo conversation;
+
+    // Verifica se a conversa de grupo já existe
+    while (fread(&conversation, sizeof(ChatGrupo), 1, file) == 1) {
+        
+        // Se o número de users for igual
         if (conversation.num_users == num_users) {
+
             bool match = true;
+
+            // Verifica se os usernames são iguais
             for (int i = 0; i < num_users; i++) {
+
                 bool user_found = false;
+
+                // Verifica se o user está na conversa de grupo
                 for (int j = 0; j < conversation.num_users; j++) {
+    
                     if (strcmp(usernames[i], conversation.usernames[j]) == 0) {
                         user_found = true;
                         break;
                     }
                 }
+
                 if (!user_found) {
                     match = false;
                     break;
                 }
             }
+
+            // Se a conversa de grupo já existe
             if (match) {
                 fclose(file);
                 return conversation.port;
@@ -1412,21 +1525,29 @@ int checkExistingGroupConversation(int num_users, char usernames[][50]) { // Ver
     return -1;
 }
 
-GroupConversation activeGroupConversations(int client_fd, const char *username) { // Devolve o nome dos users e o porto das conversas de grupo que estão ativas
-    FILE *file = fopen("groupConversationsLog.bin", "rb");
+// Devolve o nome dos users e o porto das conversas de grupo que estão ativas
+ChatGrupo ChatsGrupoAtivos(int client_fd, const char *username) {
+
+    FILE *file = fopen("chatGrupo.bin", "rb");
+    
     if (file == NULL) {
-        GroupConversation nulo = { .num_users = 0, .port = 0 };
+        ChatGrupo nulo = { .num_users = 0, .port = 0 };
         return nulo;
     }
 
-    GroupConversation available_conversations[MAX_CONVERSATIONS];
+    ChatGrupo available_conversations[MAX_CONVERSATIONS];
     int counter = 0;
-    char choices_to_send[1000] = "\nACTIVE GROUP CONVERSATIONS\n\n";
+    char choices_to_send[1000] = "\nChats Grupo Ativos\n\n";
     char counter_str[5];
 
-    GroupConversation conversation;
-    while (fread(&conversation, sizeof(GroupConversation), 1, file) == 1) {
+    ChatGrupo conversation;
+
+    // Verifica se o user está numa conversa de grupo
+    while (fread(&conversation, sizeof(ChatGrupo), 1, file) == 1) {
+
         for (int i = 0; i < conversation.num_users; i++) {
+
+            // Se o user está na conversa de grupo
             if (strcmp(conversation.usernames[i], username) == 0) {
                 available_conversations[counter] = conversation;
                 counter++;
@@ -1437,18 +1558,24 @@ GroupConversation activeGroupConversations(int client_fd, const char *username) 
                 sprintf(port_str, "%d", conversation.port);
                 strcat(choices_to_send, port_str);
                 strcat(choices_to_send, " Users: ");
+
+                // Adiciona os usernames à string
                 for (int j = 0; j < conversation.num_users; j++) {
 
 					size_t len = strlen(conversation.usernames[j]);
+                
                     if (conversation.usernames[j][len - 1] == '\n') {
                         conversation.usernames[j][len - 1] = '\0';
                     }
 
                     strcat(choices_to_send, conversation.usernames[j]);
+                
                     if (j < conversation.num_users - 1) {
                         strcat(choices_to_send, ", ");
                     }
                 }
+
+                // Adiciona a opção de sair
                 strcat(choices_to_send, "\n");
                 break;
             }
@@ -1463,21 +1590,26 @@ GroupConversation activeGroupConversations(int client_fd, const char *username) 
     strcat(choices_to_send, ". Return to the MENU\n\nSelection: ");
 
     int selection = -1;
+    
+    // Envia a string para o user
     while (1) {
         sendString(client_fd, choices_to_send);
         char *selection_str = receiveString(client_fd);
         selection = atoi(selection_str);
         free(selection_str);
 
-        if (selection == counter) { // Sair
-            GroupConversation nulo = { .num_users = 0, .port = 0 };
+        // Return to the previous menu
+        if (selection == counter) {
+            ChatGrupo nulo = { .num_users = 0, .port = 0 };
             return nulo;
-        } else if (selection > 0 && selection < counter) {
+        } 
+        
+        else if (selection > 0 && selection < counter) {
             return available_conversations[selection - 1];
         }
     }
 
-    GroupConversation nulo = { .num_users = 0, .port = 0 };
+    ChatGrupo nulo = { .num_users = 0, .port = 0 };
     return nulo;
 }
 

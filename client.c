@@ -18,7 +18,7 @@ typedef int bool;
 
 #define BUF_SIZE 1024
 #define MAX_WORDS 50
-#define MAX_CLIENTS 10
+#define MAX_CLIENTES 10
 
 typedef struct {	// struct que armazena as palavras bloqueadas pelo administrador
 	char word[20];
@@ -31,17 +31,16 @@ typedef struct {
 
 void erro(char *msg);
 int serverConnection(int argc, char *argv[]);
-void connectingToClientServer(const User user, const User conversa); // conecta-se a um server de um cliente
-void createNewServer(const User user); // torna o cliente num server
+void conectar_server_cliente(const User user, const User conversa); // conecta-se a um server que é cliente
+void criar_server_cliente(const User user); // cliente é server
 void sendString(int fd, char *msg);
-char *receiveString(int fd, bool mensagens);
-int compareWords(const char *word1, const char *word2);
-char * filteredString (char * msgToSend);
+char * receiveString(int fd, bool veio_mensagens);
+int compararPalavras(const char *word1, const char *word2);
+char * filtrarMensagem(char * sms_enviar);
 
-// group chat
-void createGroupChatServer(const User user);
-void connectToGroupChatServer(const User user, int port);
-void handle_client_message(int client_fd, fd_set *master_set, int fd_max, int server_fd, const User user);
+// grupo
+void criarServerGrupo(const User user);
+void conectarServerGrupo(const User user, int port);
 
 int main(int argc, char *argv[]) {
 	printf("\e[1;1H\e[2J"); 
@@ -67,7 +66,7 @@ int main(int argc, char *argv[]) {
 
             if (sscanf(msgReceived, "Creating a new server: %s %d", user.username, &user.port) == 2) { // recebe a string do server que diz para se tornar num server e ficar à espera de uma cliente
                 printf("username: %s\n", user.username);
-                createNewServer(user);
+                criar_server_cliente(user);
 
                 sendString(fd, "Created server successfully\n");
                 continue;
@@ -87,7 +86,7 @@ int main(int argc, char *argv[]) {
             if (sscanf(msgReceived, "Start a conversation: %s -> %s %d", user.username, conversa.username, &conversa.port) == 3) {
                 printf("username: %s\n", user.username);
                 // Connect to server
-                connectingToClientServer(user, conversa);
+                conectar_server_cliente(user, conversa);
                 sendString(fd, "Connected successfully\n");
                 continue;
             }
@@ -102,23 +101,23 @@ int main(int argc, char *argv[]) {
             
 			if (sscanf(msgReceived, "New group conversation created by %s in port %d", user.username, &user.port) == 2) {
                 printf("username: %s\n", user.username);
-                createGroupChatServer(user);
+                criarServerGrupo(user);
                 
 				sendString(fd, "Created group chat server successfully\n");
                 continue;
             }
         }
 
-        const char* connectGroupChatString = "Joining group conversation in port";
+        const char* connectGroupChatString = "A entrar em chat grupo, port";
         size_t connectGroupChatLength = strlen(connectGroupChatString);
         if (strncmp(msgReceived, connectGroupChatString, connectGroupChatLength) == 0) {
             printf("\n\nConnecting to group chat\n");
             sleep(2);
             printf("\e[1;1H\e[2J");
             User conversa;
-            if (sscanf(msgReceived, "Joining group conversation in port %d: %s", &conversa.port, user.username) == 2) {
+            if (sscanf(msgReceived, "A entrar em chat grupo, port %d: %s", &conversa.port, user.username) == 2) {
                 printf("username: %s\n", user.username);
-                connectToGroupChatServer(user, conversa.port);
+                conectarServerGrupo(user, conversa.port);
                 sendString(fd, "Connected to group chat successfully\n");
                 continue;
             }
@@ -175,11 +174,11 @@ int serverConnection(int argc, char *argv[]) {
 }
 
 // conecta-se ao outro cliente para conversas
-void connectingToClientServer(const User user, const User conversa) {
+void conectar_server_cliente(const User user, const User conversa) {
 
 	int fd;
 	struct sockaddr_in addr;
-	struct hostent *hostPtr;
+	struct hostent * hostPtr;
 
 	hostPtr = gethostbyname("127.0.0.1");
 
@@ -188,18 +187,17 @@ void connectingToClientServer(const User user, const User conversa) {
 	addr.sin_addr.s_addr = ((struct in_addr *)(hostPtr->h_addr))->s_addr;
 	addr.sin_port = htons(conversa.port); // conversa no porto do outro user
 
-	bool connection_success = true;
+	bool conexao_sucesso = true;
 	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		erro("Socket");
-		connection_success = false;
+		conexao_sucesso = false;
 	}
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		//erro("Connect");
-		printf("connect");
-		connection_success = false;
+		printf("connected");
+		conexao_sucesso = false;
 	}
 
-	if (connection_success) {
+	if (conexao_sucesso) {
 		
 		char aux[100];
 		sprintf(aux, "Chatting with %s in port %d\n\n", user.username, conversa.port);
@@ -207,13 +205,13 @@ void connectingToClientServer(const User user, const User conversa) {
 		
 		receiveString(fd, false);
 		
-		char *msgReceived = NULL;
-		char msgToSend[BUF_SIZE-22];
-		bool disconnectRequested = false; 
+		char * sms_recebido = NULL;
+		char sms_a_enviar[BUF_SIZE-22];
+		bool desconectar = false; 
 		fd_set read_fds;
         int max_fd;
 
-		while (!disconnectRequested) {
+		while (!desconectar) {
 
             FD_ZERO(&read_fds);
             FD_SET(STDIN_FILENO, &read_fds);
@@ -228,22 +226,22 @@ void connectingToClientServer(const User user, const User conversa) {
             // verifica se há entrada do utilizador disponível no teclado
             if (FD_ISSET(STDIN_FILENO, &read_fds)) {
                 
-                // guarda mensagem em "msgToSend"
-                if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
+                // guarda mensagem em "sms_a_enviar"
+                if (fgets(sms_a_enviar, sizeof(sms_a_enviar), stdin) != NULL) {
 
                     // Verifica se o utilizador quer sair
-                    if (strcmp(msgToSend, "\n") == 0) {
+                    if (strcmp(sms_a_enviar, "\n") == 0) {
                         sendString(fd, "Disconnected\n");
-                        disconnectRequested = true;
+                        desconectar = true;
                         break;
                     }
 
-                    char *filteredMessage = filteredString(msgToSend);
-                    strcpy(msgToSend, filteredMessage);
+                    char * sms_filtrado = filtrarMensagem(sms_a_enviar);
+                    strcpy(sms_a_enviar, sms_filtrado);
 
-                    char formattedMsg[BUF_SIZE];
-                    sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
-                    sendString(fd, formattedMsg);
+                    char sms_formatado[BUF_SIZE];
+                    sprintf(sms_formatado, "%s: %s", user.username, sms_a_enviar);
+                    sendString(fd, sms_formatado);
                     fflush(stdout);
                 }
             }
@@ -252,34 +250,34 @@ void connectingToClientServer(const User user, const User conversa) {
             if (FD_ISSET(fd, &read_fds)) {
                 
                 // Handle message from client
-                if (msgReceived != NULL) {
-                    free(msgReceived);
-                    msgReceived = NULL;
+                if (sms_recebido != NULL) {
+                    free(sms_recebido);
+                    sms_recebido = NULL;
                 }
 
-                msgReceived = receiveString(fd, true);
+                sms_recebido = receiveString(fd, true);
 
-                if (msgReceived == NULL) {
-                    disconnectRequested = true;
+                if (sms_recebido == NULL) {
+                    desconectar = true;
                     break;
                 }
 
-                if (strcmp(msgReceived, "Disconnected\n") == 0) {
+                if (strcmp(sms_recebido, "Disconnected\n") == 0) {
                     sendString(fd, "Disconnected\n");
-                    disconnectRequested = true;
-                    free(msgReceived);
-                    msgReceived = NULL;
+                    desconectar = true;
+                    free(sms_recebido);
+                    sms_recebido = NULL;
                     break;
                 } 
                 
                 else {
-                    printf("%s", msgReceived);
+                    printf("%s", sms_recebido);
                 }
             }
         }
 
-        if (msgReceived != NULL) {
-            free(msgReceived);
+        if (sms_recebido != NULL) {
+            free(sms_recebido);
         }
 
         close(fd);
@@ -288,7 +286,7 @@ void connectingToClientServer(const User user, const User conversa) {
 }
 
 // torna o client num server à espera de uma conexão
-void createNewServer(const User user) {
+void criar_server_cliente(const User user) {
 
 	int fd, client;
 	struct sockaddr_in addr, client_addr;
@@ -350,14 +348,14 @@ void createNewServer(const User user) {
 		sprintf(aux, "Chatting with %s in port %d\n\n", user.username, user.port);
 		sendString(client, aux);
 		
-		char *msgReceived = NULL;
-		char msgToSend[BUF_SIZE-22];
-		bool disconnectRequested = false;
+		char *sms_recebido = NULL;
+		char sms_a_enviar[BUF_SIZE-22];
+		bool desconectar = false;
 		fd_set read_fds;
         int max_fd;
 
 		// Começa a conversa
-		while (!disconnectRequested) {
+		while (!desconectar) {
             
             FD_ZERO(&read_fds);
             FD_SET(STDIN_FILENO, &read_fds);
@@ -372,25 +370,25 @@ void createNewServer(const User user) {
             // verifica se há entrada do utilizador disponível no teclado
             if (FD_ISSET(STDIN_FILENO, &read_fds)) {
                 
-                // guarda mensagem em "msgToSend"
-                if (fgets(msgToSend, sizeof(msgToSend), stdin) != NULL) {
+                // guarda mensagem em "sms_a_enviar"
+                if (fgets(sms_a_enviar, sizeof(sms_a_enviar), stdin) != NULL) {
 
                     // Verifica se o utilizador quer sair
-                    if (strcmp(msgToSend, "\n") == 0) {
+                    if (strcmp(sms_a_enviar, "\n") == 0) {
                         sendString(client, "Disconnected\n");
-                        free(msgReceived);
-                        msgReceived = NULL;
-                        msgReceived = receiveString(client, false);
+                        free(sms_recebido);
+                        sms_recebido = NULL;
+                        sms_recebido = receiveString(client, false);
 
-                        if (msgReceived && strcmp(msgReceived, "Disconnected\n") == 0) {
-                            disconnectRequested = true;
-                            free(msgReceived);
-                            msgReceived = NULL;
+                        if (sms_recebido && strcmp(sms_recebido, "Disconnected\n") == 0) {
+                            desconectar = true;
+                            free(sms_recebido);
+                            sms_recebido = NULL;
                             close(client);
                             break;
                         }
-                        free(msgReceived);
-                        msgReceived = NULL;
+                        free(sms_recebido);
+                        sms_recebido = NULL;
 
                     } 
 
@@ -398,11 +396,11 @@ void createNewServer(const User user) {
                     else {
 
                         // Filtra a mensagem antes de enviar
-                        char *filteredMessage = filteredString(msgToSend);
-                        strcpy(msgToSend, filteredMessage);
+                        char *filteredMessage = filtrarMensagem(sms_a_enviar);
+                        strcpy(sms_a_enviar, filteredMessage);
 
                         char formattedMsg[BUF_SIZE];
-                        sprintf(formattedMsg, "%s: %s", user.username, msgToSend);
+                        sprintf(formattedMsg, "%s: %s", user.username, sms_a_enviar);
                         sendString(client, formattedMsg);
                         fflush(stdout);
                     }
@@ -412,25 +410,25 @@ void createNewServer(const User user) {
             // verifica se há dados disponíveis no socket do cliente
             if (FD_ISSET(client, &read_fds)) {
                 
-                // Handle message from client
-                char *newMsgReceived = receiveString(client, true);
+                // mensagens do cliente
+                char * novo_sms_recebido = receiveString(client, true);
 
-                if (newMsgReceived && strcmp(newMsgReceived, "Disconnected\n") == 0) {
+                if (novo_sms_recebido && strcmp(novo_sms_recebido, "Disconnected\n") == 0) {
                     sendString(client, "Disconnected\n");
-                    disconnectRequested = true;
-                    free(newMsgReceived);
+                    desconectar = true;
+                    free(novo_sms_recebido);
                     close(client);
                     break;
 
-                } else if (newMsgReceived) {
-                    printf("%s", newMsgReceived);
-                    free(newMsgReceived);
+                } else if (novo_sms_recebido) {
+                    printf("%s", novo_sms_recebido);
+                    free(novo_sms_recebido);
                 }
             }
         }
 
-        if (msgReceived != NULL) {
-            free(msgReceived);
+        if (sms_recebido != NULL) {
+            free(sms_recebido);
         }
 
         close(client);
@@ -443,7 +441,7 @@ void sendString(int fd, char *msg) {
 	write(fd, msg, 1 + strlen(msg));
 }
 
-char *receiveString(int fd, bool mensagens) {
+char * receiveString(int fd, bool veio_mensagens) {
 	int nread = 0;
 	char buffer[BUF_SIZE];
 	char *string;
@@ -456,7 +454,7 @@ char *receiveString(int fd, bool mensagens) {
     if(string[0] == '\n') 
         printf("\e[1;1H\e[2J");
 	
-    if (!mensagens)
+    if (!veio_mensagens)
         printf("%s", string);
 
 	fflush(stdout);
@@ -469,14 +467,16 @@ void erro(char *msg) {
 	exit(-1);
 }
 
-int compareWords(const char *palavra1, const char *palavra2) { //função que devolve 0 se as palavras forem iguais e 1 se forem diferentes
+//função que devolve 0 se as palavras forem iguais e 1 se forem diferentes
+int compararPalavras(const char *palavra1, const char *palavra2) {
     int i = 0;
     while (palavra1[i] != '\0' && palavra2[i] != '\0') {
-        // Converte para minúsculo antes da comparação
-        char char1 = tolower(palavra1[i]);
-        char char2 = tolower(palavra2[i]);
 
-        if (char1 != char2) {
+        // Converte para minúsculo antes da comparação
+        char caracter1 = tolower(palavra1[i]);
+        char caracter2 = tolower(palavra2[i]);
+
+        if (caracter1 != caracter2) {
             return 1;
         }
         i++;
@@ -486,7 +486,8 @@ int compareWords(const char *palavra1, const char *palavra2) { //função que de
     return 0;
 }
 
-char *filteredString(char *msgToSend) {
+char * filtrarMensagem(char * sms_enviar) {
+
     FILE *file = fopen("words.bin", "rb");
     if (file == NULL) {
         return NULL;
@@ -497,13 +498,13 @@ char *filteredString(char *msgToSend) {
     fclose(file);
 
     if (num_words == 0) {
-        return msgToSend; // Se não há palavras para filtrar, retornamos a mensagem original.
+        return sms_enviar; // Se não há palavras para filtrar, retornamos a mensagem original.
     }
 
-    char frase_filtrada[BUF_SIZE] = ""; // Inicializa o buffer para a frase filtrada
+    char frase_filtrada[BUF_SIZE] = "";
 
-    char *frase_dividida = strtok(msgToSend, " ");
-    char *palavras[MAX_WORDS]; // Array para armazenar as palavras
+    char * frase_dividida = strtok(sms_enviar, " ");
+    char * palavras[MAX_WORDS];
     int num_palavras = 0;
 
     while (frase_dividida != NULL && num_palavras < MAX_WORDS) {
@@ -515,7 +516,7 @@ char *filteredString(char *msgToSend) {
     for (int j = 0; j < num_palavras; j++) {
         bool existe = false;
         for (int i = 0; i < num_words; i++) {
-            if (compareWords(words[i].word, palavras[j]) == 0) { //função retorna 0 quando 2 palavras são iguais
+            if (compararPalavras(words[i].word, palavras[j]) == 0) { //função retorna 0 quando 2 palavras são iguais!
                 existe = true;
                 break;
             }
@@ -534,16 +535,18 @@ char *filteredString(char *msgToSend) {
 
 	strcat(frase_filtrada, "\n");
 
-    return strdup(frase_filtrada); // Retorna uma cópia alocada dinamicamente da frase filtrada
+    return strdup(frase_filtrada);
 }
 
-void createGroupChatServer(const User user) {
+void criarServerGrupo(const User user) {
     int server_fd, new_client_fd, fd_max;
     struct sockaddr_in server_addr, client_addr;
     socklen_t addrlen;
-    fd_set master_set, read_fds; // master contém todos os file descriptors que são monitorizados leitura, escrita ou exceções
 
-	// Cria um socket
+	// master tem todos os file descriptors para leitura, escrita ou exceções
+    fd_set master_set, read_fds;
+
+	// Socket
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("Socket failed");
@@ -569,7 +572,7 @@ void createGroupChatServer(const User user) {
     }
 
 	// Configura o socket para ouvir conexões
-    if (listen(server_fd, MAX_CLIENTS) == -1) {
+    if (listen(server_fd, MAX_CLIENTES) == -1) {
         perror("Listen failed");
         close(server_fd);
         exit(EXIT_FAILURE);
@@ -662,7 +665,7 @@ void createGroupChatServer(const User user) {
     }
 }
 
-void connectToGroupChatServer(const User user, int port) {
+void conectarServerGrupo(const User user, int port) {
     int sock_fd;
     struct sockaddr_in server_addr;
     fd_set master_set, read_fds;
@@ -708,6 +711,7 @@ void connectToGroupChatServer(const User user, int port) {
         }
 
         for (int i = 0; i <= fd_max; i++) {
+			
             if (FD_ISSET(i, &read_fds)) {
                 if (i == sock_fd) {
                     int nbytes = recv(sock_fd, buffer, sizeof(buffer), 0);
